@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Miss You</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+
+<div id="stage">
+  <div id="glow"></div>
+  <div id="plates"></div>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+  <canvas id="sparks"></canvas>
+</div>
+
+<header id="top">
+  <div id="mark">Miss You</div>
+  <div id="topRight">
+    <span id="link"><span class="dot"></span><span id="linkText">Connecting</span></span>
+    <button class="btn" id="openSettings" type="button" hidden>Settings</button>
+  </div>
+</header>
+
+<main>
+
+  <section class="screen" id="scr-onboard">
+    <div class="card">
+      <h2>Who are you?</h2>
+      <p class="sub">Your friend will see this name when you miss them.</p>
+      <input class="field" id="regName" type="text" maxlength="40" placeholder="Your name" autocomplete="nickname">
+      <button class="btn solid" id="regGo" type="button">Get my code</button>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-connect">
+    <div class="card">
+      <h2>Your connection code</h2>
+      <p class="sub">Give these six digits to your friend, or type theirs below.</p>
+      <div class="bigcode" id="myCode">------</div>
+      <button class="btn" id="copyCode" type="button">Copy my code</button>
+      <div style="height:1px;background:var(--line)"></div>
+      <p class="sub">Enter your friend&rsquo;s code</p>
+      <input class="field code-field" id="peerCode" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="off">
+      <button class="btn solid" id="connectGo" type="button">Send request</button>
+      <p class="sub" id="connectNote"></p>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-home">
+    <div id="status"><span class="dot"></span><span id="statusText">Offline</span></div>
+    <h1 id="friendName">-</h1>
+    <p id="dateline"><span class="rule"></span><span id="dateText">11 September</span><span class="rule"></span></p>
+    <button id="miss" type="button"><span class="heart">&#128153;</span><span>Miss You</span></button>
+    <p id="missNote"></p>
+  </section>
+
+</main>
+
+<aside id="activity">
+  <h3>Recent Miss You</h3>
+  <ul id="activityList"></ul>
+  <p class="none" id="activityNone">Nothing yet. Press the button and your friend will know.</p>
+</aside>
+
+<div id="requests"></div>
+
+<aside id="settings" aria-hidden="true">
+  <header>
+    <h2>Settings</h2>
+    <button class="btn ghost" id="closeSettings" type="button">Close</button>
+  </header>
+  <div class="body">
+
+    <div class="group">
+      <h3>You</h3>
+      <input class="field" id="setName" type="text" maxlength="40" placeholder="Your name">
+      <button class="btn" id="saveName" type="button">Save name</button>
+      <dl class="pair"><dt>Joined</dt><dd id="setJoined">-</dd></dl>
+    </div>
+
+    <div class="group">
+      <h3>My connection code</h3>
+      <div class="bigcode" id="setCode">------</div>
+      <button class="btn" id="setCopy" type="button">Copy code</button>
+    </div>
+
+    <div class="group">
+      <h3>Location</h3>
+      <dl class="pair"><dt>Permission</dt><dd id="geoState" class="warm">Not asked</dd></dl>
+      <button class="btn" id="geoAsk" type="button">Allow location</button>
+      <dl class="pair"><dt>Latitude</dt><dd id="geoLat">-</dd></dl>
+      <dl class="pair"><dt>Longitude</dt><dd id="geoLon">-</dd></dl>
+      <dl class="pair"><dt>Accuracy</dt><dd id="geoAcc">-</dd></dl>
+      <dl class="pair"><dt>Read at</dt><dd id="geoAt">-</dd></dl>
+      <p class="sub" style="text-align:left">Your coordinates stay in this browser. They are never sent to the server or to your friend.</p>
+    </div>
+
+    <div class="group">
+      <h3>Connected friend</h3>
+      <dl class="pair"><dt>Name</dt><dd id="setFriendName">Nobody yet</dd></dl>
+      <dl class="pair"><dt>Their code</dt><dd id="setFriendCode">-</dd></dl>
+      <dl class="pair"><dt>Status</dt><dd id="setFriendState">-</dd></dl>
+      <button class="btn ghost" id="unfriend" type="button" hidden>Disconnect</button>
+    </div>
+
+    <div class="group">
+      <h3>Photos</h3>
+      <p class="sub" style="text-align:left">Pictures scattered behind the name. They stay in this browser.</p>
+      <div class="card-row" style="display:flex;gap:10px">
+        <button class="btn" id="addPhotos" type="button" style="flex:1">Add photos</button>
+        <button class="btn ghost" id="clearPhotos" type="button" style="flex:1">Clear</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Connection</h3>
+      <dl class="pair"><dt>Server</dt><dd id="setLink">-</dd></dl>
+      <dl class="pair"><dt>Waiting to deliver</dt><dd id="setQueued">0</dd></dl>
+      <button class="btn ghost" id="signOut" type="button">Sign out of this browser</button>
+    </div>
+
+  </div>
+</aside>
+
+<div id="popup" role="alertdialog" aria-modal="true" aria-label="Miss you">
+  <div class="inner">
+    <div class="heart">&#128153;</div>
+    <div class="said">Misses you</div>
+    <div class="who" id="popWho">-</div>
+    <div class="when" id="popWhen">-</div>
+    <div class="queued" id="popQueued" hidden>Sent while you were offline</div>
+    <div class="row">
+      <button class="btn solid" id="popBack" type="button">Miss them back</button>
+      <button class="btn ghost" id="popClose" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="box" role="dialog" aria-modal="true" aria-label="Photo">
+  <img id="boxImg" alt="">
+  <div class="row">
+    <button class="btn" id="boxClose" type="button">Close</button>
+    <button class="btn ghost" id="boxDel" type="button">Remove photo</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<script src="collage.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

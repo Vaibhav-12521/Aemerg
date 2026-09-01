@@ -1,0 +1,286 @@
+'use strict';
+
+const fs      = require('fs');
+const path    = require('path');
+const http    = require('http');
+const crypto  = require('crypto');
+const express = require('express');
+const { WebSocketServer } = require('ws');
+
+const PORT  = process.env.PORT || 8787;
+const STORE = path.join(__dirname, 'data.json');
+
+const blank = { users: {}, codes: {}, requests: {}, pending: {}, activity: {} };
+let db = blank;
+
+try {
+  if (fs.existsSync(STORE)) db = Object.assign({}, blank, JSON.parse(fs.readFileSync(STORE, 'utf8')));
+} catch (err) {
+  console.error('data.json unreadable, starting fresh:', err.message);
+}
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fs.writeFile(STORE, JSON.stringify(db, null, 2), (err) => {
+      if (err) console.error('could not write data.json:', err.message);
+    });
+  }, 150);
+}
+
+const id  = () => crypto.randomBytes(9).toString('hex');
+const now = () => Date.now();
+
+function freshCode() {
+  for (let i = 0; i < 500; i++) {
+    const c = String(crypto.randomInt(100000, 1000000));
+    if (!db.codes[c]) return c;
+  }
+  throw new Error('code space exhausted');
+}
+
+function userByToken(token) {
+  if (!token) return null;
+  return Object.keys(db.users).find((k) => db.users[k].token === token) || null;
+}
+
+const sockets = new Map();
+
+const isOnline = (uid) => sockets.has(uid) && sockets.get(uid).size > 0;
+
+function sendTo(uid, msg) {
+  const set = sockets.get(uid);
+  if (!set) return false;
+  const text = JSON.stringify(msg);
+  let sent = false;
+  for (const ws of set) {
+    if (ws.readyState === ws.OPEN) { ws.send(text); sent = true; }
+  }
+  return sent;
+}
+
+function publicUser(uid) {
+  const u = db.users[uid];
+  if (!u) return null;
+  return { id: u.id, name: u.name, code: u.code, online: isOnline(uid) };
+}
+
+function friendOf(uid) {
+  const u = db.users[uid];
+  return u && u.friendId ? publicUser(u.friendId) : null;
+}
+
+function announcePresence(uid) {
+  const u = db.users[uid];
+  if (!u || !u.friendId) return;
+  sendTo(u.friendId, { t: 'presence', friendId: uid, online: isOnline(uid) });
+}
+
+function queue(uid, evt) {
+  if (!db.pending[uid]) db.pending[uid] = [];
+  db.pending[uid].push(evt);
+  if (db.pending[uid].length > 200) db.pending[uid].splice(0, db.pending[uid].length - 200);
+  save();
+}
+
+function flush(uid) {
+  const list = db.pending[uid] || [];
+  for (const evt of list) sendTo(uid, Object.assign({ t: 'missyou' }, evt));
+}
+
+function ack(uid, evtId) {
+  const list = db.pending[uid];
+  if (!list) return;
+  const next = list.filter((e) => e.id !== evtId);
+  if (next.length !== list.length) { db.pending[uid] = next; save(); }
+}
+
+function logActivity(uid, entry) {
+  if (!db.activity[uid]) db.activity[uid] = [];
+  db.activity[uid].unshift(entry);
+  db.activity[uid] = db.activity[uid].slice(0, 40);
+  save();
+}
+
+const app = express();
+app.use(express.json({ limit: '32kb' }));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+
+function auth(req, res, next) {
+  const header = req.get('authorization') || '';
+  const token  = header.replace(/^Bearer\s+/i, '') || req.query.token;
+  const uid    = userByToken(token);
+  if (!uid) return res.status(401).json({ error: 'Sign in again. That session is no longer valid.' });
+  req.uid = uid;
+  next();
+}
+
+app.post('/api/register', (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 40);
+  if (!name) return res.status(400).json({ error: 'Enter a name so your friend knows who you are.' });
+  const uid  = id();
+  const code = freshCode();
+  db.users[uid] = { id: uid, name, code, token: id() + id(), friendId: null, createdAt: now() };
+  db.codes[code] = uid;
+  save();
+  res.json({ token: db.users[uid].token, user: publicUser(uid) });
+});
+
+app.get('/api/me', auth, (req, res) => {
+  res.json({
+    user:     publicUser(req.uid),
+    friend:   friendOf(req.uid),
+    incoming: Object.values(db.requests)
+                    .filter((r) => r.toId === req.uid && r.status === 'open')
+                    .map((r) => ({ id: r.id, from: db.users[r.fromId] ? db.users[r.fromId].name : 'Someone', at: r.createdAt })),
+    outgoing: Object.values(db.requests)
+                    .filter((r) => r.fromId === req.uid && r.status === 'open')
+                    .map((r) => ({ id: r.id, to: db.users[r.toId] ? db.users[r.toId].name : 'Someone', at: r.createdAt })),
+    activity: db.activity[req.uid] || []
+  });
+});
+
+app.post('/api/name', auth, (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 40);
+  if (!name) return res.status(400).json({ error: 'A name cannot be empty.' });
+  db.users[req.uid].name = name;
+  save();
+  const f = db.users[req.uid].friendId;
+  if (f) sendTo(f, { t: 'friend', friend: publicUser(req.uid) });
+  res.json({ user: publicUser(req.uid) });
+});
+
+function link(a, b, requestId) {
+  db.users[a].friendId = b;
+  db.users[b].friendId = a;
+  if (requestId && db.requests[requestId]) db.requests[requestId].status = 'accepted';
+
+  for (const r of Object.values(db.requests)) {
+    if (r.status === 'open' && (r.fromId === a || r.toId === a || r.fromId === b || r.toId === b)) {
+      r.status = 'closed';
+    }
+  }
+  save();
+  sendTo(a, { t: 'friend', friend: publicUser(b) });
+  sendTo(b, { t: 'friend', friend: publicUser(a) });
+}
+
+app.post('/api/connect', auth, (req, res) => {
+  const code = String(req.body.code || '').replace(/\D/g, '');
+  const me   = db.users[req.uid];
+  if (code.length !== 6) return res.status(400).json({ error: 'A connection code is 6 digits.' });
+  if (code === me.code)  return res.status(400).json({ error: 'That is your own code.' });
+
+  const otherId = db.codes[code];
+  if (!otherId)          return res.status(404).json({ error: 'No one is using that code.' });
+  if (me.friendId)       return res.status(400).json({ error: 'Disconnect from your current friend first.' });
+  if (db.users[otherId].friendId) {
+    return res.status(400).json({ error: 'That person is already connected to someone.' });
+  }
+
+  const mirror = Object.values(db.requests)
+    .find((r) => r.status === 'open' && r.fromId === otherId && r.toId === req.uid);
+  if (mirror) {
+    link(req.uid, otherId, mirror.id);
+    return res.json({ linked: true, friend: friendOf(req.uid) });
+  }
+
+  const existing = Object.values(db.requests)
+    .find((r) => r.status === 'open' && r.fromId === req.uid && r.toId === otherId);
+  if (existing) return res.json({ linked: false, pending: true });
+
+  const rid = id();
+  db.requests[rid] = { id: rid, fromId: req.uid, toId: otherId, status: 'open', createdAt: now() };
+  save();
+  sendTo(otherId, { t: 'request', request: { id: rid, from: me.name, at: now() } });
+  res.json({ linked: false, pending: true });
+});
+
+app.post('/api/respond', auth, (req, res) => {
+  const r = db.requests[String(req.body.requestId || '')];
+  if (!r || r.status !== 'open' || r.toId !== req.uid) {
+    return res.status(404).json({ error: 'That request is no longer open.' });
+  }
+  if (!req.body.accept) {
+    r.status = 'declined';
+    save();
+    return res.json({ friend: null });
+  }
+  if (db.users[req.uid].friendId || db.users[r.fromId].friendId) {
+    return res.status(400).json({ error: 'One of you is already connected to someone.' });
+  }
+  link(req.uid, r.fromId, r.id);
+  res.json({ friend: friendOf(req.uid) });
+});
+
+app.post('/api/unfriend', auth, (req, res) => {
+  const me = db.users[req.uid];
+  const other = me.friendId;
+  me.friendId = null;
+  if (other && db.users[other]) {
+    db.users[other].friendId = null;
+    sendTo(other, { t: 'friend', friend: null });
+  }
+  save();
+  res.json({ friend: null });
+});
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', (ws, req) => {
+  const token = new URL(req.url, 'http://localhost').searchParams.get('token');
+  const uid = userByToken(token);
+  if (!uid) { ws.close(4001, 'bad token'); return; }
+
+  ws.uid = uid;
+  ws.alive = true;
+  if (!sockets.has(uid)) sockets.set(uid, new Set());
+  sockets.get(uid).add(ws);
+
+  ws.send(JSON.stringify({ t: 'ready', user: publicUser(uid), friend: friendOf(uid) }));
+  announcePresence(uid);
+  flush(uid);
+
+  ws.on('pong', () => { ws.alive = true; });
+
+  ws.on('message', (raw) => {
+    let m;
+    try { m = JSON.parse(raw.toString()); } catch (err) { return; }
+
+    if (m.t === 'ack' && m.id) { ack(uid, m.id); return; }
+
+    if (m.t === 'missyou') {
+      const me = db.users[uid];
+      if (!me.friendId) {
+        ws.send(JSON.stringify({ t: 'error', text: 'Connect with a friend first.' }));
+        return;
+      }
+      const evt = { id: id(), fromId: uid, fromName: me.name, at: now() };
+      queue(me.friendId, evt);
+      const delivered = sendTo(me.friendId, Object.assign({ t: 'missyou' }, evt));
+      logActivity(uid,         { id: evt.id, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
+      logActivity(me.friendId, { id: evt.id, dir: 'in',  name: me.name,                    at: evt.at });
+      ws.send(JSON.stringify({ t: 'sent', id: evt.id, at: evt.at, delivered }));
+    }
+  });
+
+  ws.on('close', () => {
+    const set = sockets.get(uid);
+    if (set) { set.delete(ws); if (!set.size) sockets.delete(uid); }
+    announcePresence(uid);
+  });
+});
+
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (!ws.alive) { ws.terminate(); continue; }
+    ws.alive = false;
+    ws.ping();
+  }
+}, 25000).unref();
+
+server.listen(PORT, () => {
+  console.log('Miss You is running at http://localhost:' + PORT);
+});

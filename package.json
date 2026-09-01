@@ -1,0 +1,15 @@
+{
+  "name": "missyou",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internet-only friendship app: two friends connect with a 6-digit code and send Miss You over WebSockets.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
