@@ -281,7 +281,7 @@ body{
 
   <div id="centre">
     <div id="eyebrow" contenteditable="true" spellcheck="false" role="textbox" aria-label="Greeting line">HAPPY BIRTHDAY</div>
-    <h1 id="name" contenteditable="true" spellcheck="false" role="textbox" aria-label="Name">MEERA</h1>
+    <h1 id="name" contenteditable="true" spellcheck="false" role="textbox" aria-label="Name">NAME</h1>
     <p id="date"><span class="rule"></span><span id="dateText">11 SEPTEMBER</span><span class="rule"></span></p>
     <p id="hint">CLICK THE NAME TO CHANGE IT &middot; DROP PHOTOS ANYWHERE</p>
   </div>
@@ -333,7 +333,7 @@ function save(k, v){ try{ localStorage.setItem(k, v); return true; }catch(e){ re
 
 var photos = [];
 try{ photos = JSON.parse(load(K.photos,'[]')) || []; }catch(e){ photos = []; }
-nameEl.textContent = load(K.name,'MEERA');
+nameEl.textContent = load(K.name,'NAME');
 browEl.textContent = load(K.brow,'HAPPY BIRTHDAY');
 
 var touched = photos.length > 0;
@@ -696,7 +696,7 @@ function editable(el, key, fallback){
   });
   el.addEventListener('click', function(e){ e.stopPropagation(); });
 }
-editable(nameEl, K.name, 'MEERA');
+editable(nameEl, K.name, 'NAME');
 editable(browEl, K.brow, 'HAPPY BIRTHDAY');
 
 var dateText = document.getElementById('dateText');
