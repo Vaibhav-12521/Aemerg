@@ -78,7 +78,23 @@ function freshCode() {
   throw new Error('code space exhausted');
 }
 
-const KINDS = new Set(['missyou', 'hug', 'thinking', 'laugh', 'proud', 'night']);
+const KINDS = new Set(['missyou', 'hug', 'thinking', 'laugh', 'proud', 'night', 'text']);
+const TEXT_MAX = 200;
+
+/* Notes are stored and delivered as plain text and rendered with textContent,
+   so no markup can travel through. Control characters are dropped and runs of
+   whitespace collapsed, which also stops a wall of newlines being sent. */
+function cleanText(v) {
+  const src = String(v == null ? '' : v);
+  let out = '';
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    /* drop C0 controls and DEL, keep everything else so other scripts
+       and emoji travel through untouched */
+    out += (c < 0x20 || c === 0x7f) ? ' ' : src[i];
+  }
+  return out.replace(/\s+/g, ' ').trim().slice(0, TEXT_MAX);
+}
 
 function userByToken(token) {
   if (!token) return null;
@@ -297,13 +313,22 @@ wss.on('connection', (ws, req) => {
         ws.send(JSON.stringify({ t: 'error', text: 'Connect with a friend first.' }));
         return;
       }
-      const kind = KINDS.has(m.kind) ? m.kind : 'missyou';
+      let kind = KINDS.has(m.kind) ? m.kind : 'missyou';
+      let text = '';
+      if (kind === 'text') {
+        text = cleanText(m.text);
+        if (!text) {
+          ws.send(JSON.stringify({ t: 'error', text: 'Type something first.' }));
+          return;
+        }
+      }
       const evt = { id: id(), kind, fromId: uid, fromName: me.name, at: now() };
+      if (text) evt.text = text;
       queue(me.friendId, evt);
       const delivered = sendTo(me.friendId, Object.assign({ t: 'missyou' }, evt));
-      logActivity(uid,         { id: evt.id, kind, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
-      logActivity(me.friendId, { id: evt.id, kind, dir: 'in',  name: me.name,                    at: evt.at });
-      ws.send(JSON.stringify({ t: 'sent', id: evt.id, kind, at: evt.at, delivered }));
+      logActivity(uid,         { id: evt.id, kind, text, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
+      logActivity(me.friendId, { id: evt.id, kind, text, dir: 'in',  name: me.name,                    at: evt.at });
+      ws.send(JSON.stringify({ t: 'sent', id: evt.id, kind, text, at: evt.at, delivered }));
     }
   });
 

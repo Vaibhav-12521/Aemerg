@@ -30,10 +30,15 @@ Two friends link with a six-digit code. Either one presses a button and the
 other gets a popup. If they are offline, it waits on the server and arrives the
 moment they open the app.
 
-Six things you can send: **Miss You**, **Hug**, **Thinking**, **Laughing**,
-**Proud**, **Good Night**. Each carries its own icon, wording and spark colour
-through the popup, the activity list and the desktop notification. Miss You is
-the large button; the rest sit under it.
+Six one-tap notes: **Miss You**, **Hug**, **Thinking**, **Laughing**, **Proud**,
+**Good Night**. Each carries its own wording and spark colour through the popup,
+the activity list and the notification. Miss You is the large button; the rest
+sit under it.
+
+Under those is a field for **your own words**, up to 200 characters. A written
+note arrives set in italic Bodoni inside the popup, reads back in the activity
+list, and queues offline exactly like a tapped one. Text is delivered as text
+and rendered with `textContent`, so nothing typed into it can become markup.
 
 Everything runs over the internet - HTTP for the API, a WebSocket for live
 delivery. There is no SMS, SIM, phone-call or cellular code anywhere in it.
@@ -110,6 +115,12 @@ Nothing signs you out but you. A session lives in the browser and is removed
 only by **Sign out of this browser**, or by **Start over with a new code** on
 the screen below.
 
+Shipping a new version does not sign anyone out either. Storage is versioned
+and migrated rather than cleared, older key names are carried forward, and the
+service worker only ever replaces its own cache. If `localStorage` is
+unavailable the app falls back to memory for that session instead of appearing
+signed out.
+
 If the server stops recognising a device (it restarted with no `data.json`, or
 was moved), the app does **not** quietly drop back to sign-up. It keeps the
 session, says *Still signed in here*, names who the device belongs to, and
@@ -127,6 +138,17 @@ one. Queued notes are saved the same way.
   activity. Delete it to reset everything.
 * The browser's `localStorage` - your session token, your photos, and the ids of
   events already shown to you.
+
+### Look
+
+The surfaces are glass: a dark translucent tint, a blur that samples the photo
+collage behind, a bright hairline along the top edge for the specular catch,
+and a soft inner sheen. The tint is dark on purpose. A light tint over a dark
+ground only brightens whatever photo sits behind it and the text stops being
+readable, so the frost comes from the blur and the glass from the rim.
+
+Browsers without `backdrop-filter` get opaque panels through an `@supports`
+fallback rather than unreadable transparent ones.
 
 ### Layout
 

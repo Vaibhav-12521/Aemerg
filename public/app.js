@@ -11,8 +11,11 @@
     { k: 'thinking', ic: '\u2615',        label: 'Thinking',   said: 'Is thinking of you',   out: 'You thought of',    inn: 'thought of you',  hue: ['#C9A227', '#F7F0E4', '#B98C5A'] },
     { k: 'laugh',    ic: '\uD83D\uDE02', label: 'Laughing',   said: 'Is laughing with you', out: 'You laughed with',  inn: 'laughed with you', hue: ['#E4A950', '#F7F0E4', '#8FB98A'] },
     { k: 'proud',    ic: '\u2B50',        label: 'Proud',      said: 'Is proud of you',      out: 'You cheered',       inn: 'is proud of you', hue: ['#E4C64F', '#FFF3D0', '#E4A950'] },
-    { k: 'night',    ic: '\uD83C\uDF19', label: 'Good Night', said: 'Says good night',      out: 'You said night to', inn: 'said good night', hue: ['#7E9BC4', '#C9BCE0', '#F7F0E4'] }
+    { k: 'night',    ic: '\uD83C\uDF19', label: 'Good Night', said: 'Says good night',      out: 'You said night to', inn: 'said good night', hue: ['#7E9BC4', '#C9BCE0', '#F7F0E4'] },
+    { k: 'text',     ic: '',              label: 'Message',    said: 'Says',                 out: 'You wrote to',      inn: 'wrote to you',    hue: ['#E4A950', '#F7F0E4', '#7E9BC4'] }
   ];
+
+  var TEXT_MAX = 200;
 
   function kindOf(k) {
     for (var i = 0; i < KINDS.length; i++) if (KINDS[i].k === k) return KINDS[i];
@@ -32,11 +35,54 @@
   var ws = null, retry = 0, retryTimer = null;
   var popQueue = [], popShowing = false, popKind = 'missyou';
 
-  function get(k, fb) { try { var v = localStorage.getItem(k); return v === null ? fb : v; } catch (e) { return fb; } }
-  function put(k, v)  { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
-  function del(k)     { try { localStorage.removeItem(k); } catch (e) {} }
+  /* Storage is versioned, never wiped. A new version of the app migrates what
+     it finds rather than starting clean, so shipping a change can never sign
+     anyone out. Keys added later go in MIGRATIONS, and old keys are read
+     before they are retired. If localStorage itself is unavailable the app
+     falls back to memory for the session instead of failing. */
+
+  var SCHEMA = '3';
+  var mem = {};
+
+  function get(k, fb) {
+    try {
+      var v = localStorage.getItem(k);
+      if (v !== null) return v;
+    } catch (e) {
+      if (Object.prototype.hasOwnProperty.call(mem, k)) return mem[k];
+    }
+    return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : fb;
+  }
+
+  function put(k, v) {
+    mem[k] = v;
+    try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+  }
+
+  /* Only ever called from a path the user chose. */
+  function del(k) {
+    delete mem[k];
+    try { localStorage.removeItem(k); } catch (e) {}
+  }
+
+  function migrate() {
+    var was = get('my.schema', null);
+    if (was === SCHEMA) return;
+
+    /* carry anything an older build wrote under a different name */
+    var LEGACY = [['aemerg.token', K.token], ['missyou.token', K.token],
+                  ['aemerg.name', K.name],   ['missyou.name', K.name]];
+    for (var i = 0; i < LEGACY.length; i++) {
+      var from = LEGACY[i][0], to = LEGACY[i][1];
+      var v = get(from, null);
+      if (v && !get(to, null)) put(to, v);
+    }
+    put('my.schema', SCHEMA);
+  }
 
   function jsonGet(k, fb) { try { return JSON.parse(get(k, JSON.stringify(fb))) || fb; } catch (e) { return fb; } }
+
+  migrate();
 
   var seen   = jsonGet(K.seen, []);
   var outbox = jsonGet(K.outbox, []);
@@ -156,7 +202,7 @@
   function buildSendButtons() {
     var wrap = $('sendMore');
     wrap.innerHTML = '';
-    KINDS.slice(1).forEach(function (kind) {
+    KINDS.slice(1).filter(function (k) { return k.k !== 'text'; }).forEach(function (kind) {
       var b = document.createElement('button');
       b.className = 'send';
       b.type = 'button';
@@ -187,6 +233,8 @@
     $('setFriendState').textContent = online ? 'Online' : 'Offline';
     if (online) { state.awayCount = 0; $('setQueued').textContent = '0'; }
     sendButtons().forEach(function (b) { b.disabled = !state.friend; });
+    $('composeText').disabled = !state.friend;
+    $('composeGo').disabled = !state.friend;
     $('missNote').textContent = state.friend
       ? (online ? '' : 'They are away. Anything you send waits until they open the app.')
       : '';
@@ -206,7 +254,13 @@
       var who = document.createElement('span');
       who.className = 'who';
       var kind = kindOf(a.kind);
-      who.textContent = kind.ic + '  ' + (a.dir === 'in' ? a.name + ' ' + kind.inn : kind.out + ' ' + a.name);
+      if (a.text) {
+        who.textContent = (a.dir === 'in' ? a.name + ': ' : 'You: ') + a.text;
+        li.title = a.text;
+      } else {
+        who.textContent = (kind.ic ? kind.ic + '  ' : '') +
+          (a.dir === 'in' ? a.name + ' ' + kind.inn : kind.out + ' ' + a.name);
+      }
       var when = document.createElement('span');
       when.className = 'when';
       when.textContent = shortAgo(a.at);
@@ -302,7 +356,7 @@
       if (m.t === 'error')    { toast(m.text); return; }
 
       if (m.t === 'sent') {
-        addActivity({ id: m.id, kind: m.kind, dir: 'out', name: state.friend ? state.friend.name : 'your friend', at: m.at });
+        addActivity({ id: m.id, kind: m.kind, text: m.text, dir: 'out', name: state.friend ? state.friend.name : 'your friend', at: m.at });
         if (m.delivered) {
           toast('Delivered');
         } else {
@@ -317,7 +371,7 @@
 
         try { ws.send(JSON.stringify({ t: 'ack', id: m.id })); } catch (e) {}
         if (!markSeen(m.id)) return;
-        addActivity({ id: m.id, kind: m.kind, dir: 'in', name: m.fromName, at: m.at });
+        addActivity({ id: m.id, kind: m.kind, text: m.text, dir: 'in', name: m.fromName, at: m.at });
         popQueue.push(m);
         nextPopup();
       }
@@ -350,23 +404,32 @@
     outbox = [];
     put(K.outbox, '[]');
     pending.forEach(function (o) {
-      ws.send(JSON.stringify({ t: 'missyou', kind: (o && o.kind) || 'missyou' }));
+      var m = { t: 'missyou', kind: (o && o.kind) || 'missyou' };
+      if (o && o.text) m.text = o.text;
+      ws.send(JSON.stringify(m));
     });
     if (pending.length) toast('Sent ' + pending.length + ' saved ' + (pending.length === 1 ? 'press' : 'presses'));
   }
 
-  function sendMiss(k) {
+  function sendMiss(k, text) {
     var kind = kindOf(k);
     if (!state.friend) { toast('Connect with a friend first.'); return; }
+    text = (text || '').replace(/\s+/g, ' ').trim().slice(0, TEXT_MAX);
+    if (kind.k === 'text' && !text) { toast('Type something first'); return; }
+
+    var msg = { t: 'missyou', kind: kind.k };
+    if (text) msg.text = text;
+
     if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ t: 'missyou', kind: kind.k }));
+      ws.send(JSON.stringify(msg));
     } else {
-      outbox.push({ at: Date.now(), kind: kind.k });
+      outbox.push({ at: Date.now(), kind: kind.k, text: text });
       put(K.outbox, JSON.stringify(outbox));
       toast('You are offline. It will send when you reconnect');
       connect();
     }
-    var btn = document.querySelector('.send[data-kind="' + kind.k + '"]') || $('miss');
+    var btn = (kind.k === 'text' && $('composeGo')) ||
+              document.querySelector('.send[data-kind="' + kind.k + '"]') || $('miss');
     var r = btn.getBoundingClientRect();
     Collage.burst(r.left + r.width / 2, r.top + r.height / 2, 26, 1.1, kind.hue);
   }
@@ -381,6 +444,9 @@
     $('popIcon').textContent = kind.ic;
     $('popIcon').hidden = !kind.ic;
     $('popSaid').textContent = kind.said;
+    $('popText').textContent = m.text || '';
+    $('popText').hidden = !m.text;
+    $('popBack').textContent = kind.k === 'text' ? 'Write back' : 'Send one back';
     $('popWho').textContent = m.fromName;
     $('popWhen').textContent = ago(m.at);
     $('popQueued').hidden = (Date.now() - m.at) < 15000;
@@ -392,7 +458,9 @@
     }
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification(m.fromName + ' ' + kind.inn, { body: 'Open Aemerg to send one back.' });
+        new Notification(m.fromName + ' ' + kind.inn, {
+          body: m.text || 'Open Aemerg to send one back.'
+        });
       } catch (e) {}
     }
   }
@@ -683,10 +751,34 @@
   $('setCopy').onclick = copyCode;
 
   $('miss').onclick = function () { sendMiss('missyou'); };
+
+  $('compose').onsubmit = function (e) {
+    e.preventDefault();
+    var v = $('composeText').value;
+    if (!v.trim()) { $('composeText').focus(); return; }
+    sendMiss('text', v);
+    $('composeText').value = '';
+    countText();
+  };
+
+  function countText() {
+    var n = $('composeText').value.length;
+    $('composeCount').textContent = n > TEXT_MAX - 40 ? (TEXT_MAX - n) + ' left' : '';
+  }
+  $('composeText').oninput = countText;
   buildSendButtons();
 
   $('popClose').onclick = closePopup;
-  $('popBack').onclick = function () { var k = popKind; closePopup(); sendMiss(k); };
+  $('popBack').onclick = function () {
+    var k = popKind;
+    closePopup();
+    /* there is nothing to echo back for a written note: hand them the field */
+    if (k === 'text') {
+      setTimeout(function () { $('composeText').focus(); }, 300);
+      return;
+    }
+    sendMiss(k);
+  };
 
   $('openSettings').onclick = openSettings;
   $('closeSettings').onclick = closeSettings;

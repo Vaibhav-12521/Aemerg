@@ -82,6 +82,16 @@
       </button>
     </div>
     <div id="sendMore"></div>
+
+    <form id="compose" autocomplete="off">
+      <input id="composeText" type="text" maxlength="200" placeholder="Say something of your own"
+             aria-label="Your own message" enterkeyhint="send">
+      <button id="composeGo" type="submit" aria-label="Send message">
+        <span aria-hidden="true">&#8594;</span>
+      </button>
+    </form>
+    <p id="composeCount" aria-live="polite"></p>
+
     <p id="missNote"></p>
 
     <aside id="activity">
@@ -168,6 +178,7 @@
   <div class="inner">
     <div class="popic" id="popIcon" hidden></div>
     <div class="said" id="popSaid">Misses you</div>
+    <blockquote class="popsaid" id="popText" hidden></blockquote>
     <div class="who" id="popWho">-</div>
     <div class="when" id="popWhen">-</div>
     <div class="queued" id="popQueued" hidden>Sent while you were offline</div>
