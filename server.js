@@ -8,8 +8,19 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const webpush = require('web-push');
 
-const PORT  = process.env.PORT || 8787;
-const STORE = path.join(__dirname, 'data.json');
+const PORT = process.env.PORT || 8787;
+
+/* Where the store lives. On a host with a mounted disk, point DATA_DIR at the
+   mount (Render: /var/data) so accounts outlive a deploy. Left unset it sits
+   beside server.js, which is right for running it locally. */
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const STORE = path.join(DATA_DIR, 'data.json');
+
+try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (err) {
+  console.error('cannot use DATA_DIR ' + DATA_DIR + ':', err.message);
+}
 
 const blank = { users: {}, codes: {}, requests: {}, pending: {}, activity: {}, subs: {} };
 let db = blank;
@@ -274,7 +285,22 @@ function logActivity(uid, entry) {
 }
 
 const app = express();
+
+/* Render terminates TLS and forwards, so the real protocol and client address
+   arrive in headers rather than on the socket. */
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
+
+/* Something for the host's health check to hit that does not touch the store */
+app.get('/healthz', (req, res) => {
+  res.json({
+    ok: true,
+    push: !!vapid,
+    users: Object.keys(db.users).length,
+    online: sockets.size,
+    uptime: Math.round(process.uptime())
+  });
+});
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 function auth(req, res, next) {
@@ -484,5 +510,6 @@ setInterval(() => {
 }, 25000).unref();
 
 server.listen(PORT, () => {
-  console.log('Aemerg is running at http://localhost:' + PORT);
+  console.log('Aemerg is running on port ' + PORT);
+  console.log('  store: ' + STORE);
 });

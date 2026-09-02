@@ -1,0 +1,39 @@
+# Render Blueprint for Aemerg.
+#
+# The plan is deliberately "starter", not "free". A free instance has no disk,
+# so data.json would be gone on every deploy and restart and everyone would be
+# signed out; it also sleeps after 15 minutes idle, which drops the WebSocket.
+# The disk below is what makes accounts and queued notes survive.
+#
+# The three VAPID values are marked sync:false, so Render will prompt for them
+# rather than storing them here. Get them from vapid.json, or from
+# `npm run keys` if you have not generated a pair yet.
+
+services:
+  - type: web
+    name: aemerg
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+
+    disk:
+      name: aemerg-data
+      mountPath: /var/data
+      sizeGB: 1
