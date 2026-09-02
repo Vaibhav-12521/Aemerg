@@ -119,7 +119,7 @@ let vapid = null;
 try {
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     vapid = {
-      subject: process.env.VAPID_SUBJECT || 'mailto:aemerg@example.com',
+      subject: process.env.VAPID_SUBJECT || 'mailto:singh12521vaibhav@gmail.com',
       publicKey: process.env.VAPID_PUBLIC_KEY,
       privateKey: process.env.VAPID_PRIVATE_KEY
     };

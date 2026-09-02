@@ -25,7 +25,7 @@ if (fs.existsSync(OUT) && !process.argv.includes('--force')) {
 }
 
 const keys = webpush.generateVAPIDKeys();
-const subject = process.env.VAPID_SUBJECT || 'mailto:aemerg@example.com';
+const subject = process.env.VAPID_SUBJECT || 'mailto:singh12521vaibhav@gmail.com';
 
 fs.writeFileSync(OUT, JSON.stringify({
   subject: subject,
