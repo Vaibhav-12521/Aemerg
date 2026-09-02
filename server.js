@@ -19,15 +19,53 @@ try {
   console.error('data.json unreadable, starting fresh:', err.message);
 }
 
+/* Writes go to a temp file and are renamed over the real one, so a crash
+   mid-write can never leave a half-written data.json behind: either the old
+   file survives intact or the new one replaces it whole.
+
+   An account that exists only in memory is an account the user gets signed
+   out of, so anything that creates or changes one saves immediately rather
+   than waiting on the debounce. */
+
 let saveTimer = null;
-function save() {
+let dirty = false;
+
+function writeNow() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    fs.writeFile(STORE, JSON.stringify(db, null, 2), (err) => {
-      if (err) console.error('could not write data.json:', err.message);
-    });
-  }, 150);
+  saveTimer = null;
+  dirty = false;
+  const tmp = STORE + '.tmp';
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+    fs.renameSync(tmp, STORE);
+  } catch (err) {
+    console.error('could not write data.json:', err.message);
+    try { fs.unlinkSync(tmp); } catch (e) {}
+  }
 }
+
+function save(immediate) {
+  if (immediate) { writeNow(); return; }
+  dirty = true;
+  if (saveTimer) return;
+  saveTimer = setTimeout(writeNow, 150);
+}
+
+/* never lose the last few writes when the process goes down */
+function flushAndExit(signal) {
+  return () => {
+    if (dirty) writeNow();
+    process.exit(signal === 'SIGINT' ? 130 : 0);
+  };
+}
+process.on('SIGINT',  flushAndExit('SIGINT'));
+process.on('SIGTERM', flushAndExit('SIGTERM'));
+process.on('exit', () => { if (dirty) writeNow(); });
+process.on('uncaughtException', (err) => {
+  console.error('uncaught:', err && err.stack ? err.stack : err);
+  if (dirty) writeNow();
+  process.exit(1);
+});
 
 const id  = () => crypto.randomBytes(9).toString('hex');
 const now = () => Date.now();
@@ -83,7 +121,7 @@ function queue(uid, evt) {
   if (!db.pending[uid]) db.pending[uid] = [];
   db.pending[uid].push(evt);
   if (db.pending[uid].length > 200) db.pending[uid].splice(0, db.pending[uid].length - 200);
-  save();
+  save(true);
 }
 
 function flush(uid) {
@@ -125,7 +163,7 @@ app.post('/api/register', (req, res) => {
   const code = freshCode();
   db.users[uid] = { id: uid, name, code, token: id() + id(), friendId: null, createdAt: now() };
   db.codes[code] = uid;
-  save();
+  save(true);
   res.json({ token: db.users[uid].token, user: publicUser(uid) });
 });
 
@@ -163,7 +201,7 @@ function link(a, b, requestId) {
       r.status = 'closed';
     }
   }
-  save();
+  save(true);
   sendTo(a, { t: 'friend', friend: publicUser(b) });
   sendTo(b, { t: 'friend', friend: publicUser(a) });
 }

@@ -3,10 +3,10 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  var K = { token: 'my.token', photos: 'my.photos', seen: 'my.seen', outbox: 'my.outbox' };
+  var K = { token: 'my.token', photos: 'my.photos', seen: 'my.seen', outbox: 'my.outbox', name: 'my.name' };
 
   var KINDS = [
-    { k: 'missyou',  ic: '\uD83D\uDC99', label: 'Miss You',   said: 'Misses you',           out: 'You missed',        inn: 'missed you',      hue: ['#7E9BC4', '#EAF1FA', '#C97B6E'] },
+    { k: 'missyou',  ic: '',                label: 'Miss You',   said: 'Misses you',           out: 'You missed',        inn: 'missed you',      hue: ['#7E9BC4', '#EAF1FA', '#C97B6E'] },
     { k: 'hug',      ic: '\uD83E\uDD17', label: 'Hug',        said: 'Sent you a hug',       out: 'You hugged',        inn: 'sent you a hug',  hue: ['#E4A950', '#FFE6BB', '#C97B6E'] },
     { k: 'thinking', ic: '\u2615',        label: 'Thinking',   said: 'Is thinking of you',   out: 'You thought of',    inn: 'thought of you',  hue: ['#C9A227', '#F7F0E4', '#B98C5A'] },
     { k: 'laugh',    ic: '\uD83D\uDE02', label: 'Laughing',   said: 'Is laughing with you', out: 'You laughed with',  inn: 'laughed with you', hue: ['#E4A950', '#F7F0E4', '#8FB98A'] },
@@ -25,7 +25,8 @@
     friend: null,
     activity: [],
     live: false,
-    awayCount: 0
+    awayCount: 0,
+    stale: false
   };
 
   var ws = null, retry = 0, retryTimer = null;
@@ -66,7 +67,11 @@
       body: opts.body ? JSON.stringify(opts.body) : undefined
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+        if (!r.ok) {
+          var err = new Error(data.error || 'Something went wrong. Try again.');
+          err.status = r.status;
+          throw err;
+        }
         return data;
       });
     });
@@ -106,7 +111,7 @@
   }
 
   function screen(which) {
-    ['scr-onboard', 'scr-connect', 'scr-home'].forEach(function (s) {
+    ['scr-onboard', 'scr-connect', 'scr-home', 'scr-stale'].forEach(function (s) {
       $(s).classList.toggle('on', s === which);
     });
     $('openSettings').hidden = !state.token;
@@ -124,6 +129,14 @@
 
   function paint() {
     if (!state.token)      { screen('scr-onboard'); return; }
+    if (state.stale) {
+      var who = get(K.name, '');
+      $('staleWho').textContent = who
+        ? 'This device is signed in as ' + who + ', but the server does not recognise it right now.'
+        : 'The server does not recognise this device right now.';
+      screen('scr-stale');
+      return;
+    }
     if (!state.friend)     { screen('scr-connect'); paintCodes(); return; }
 
     screen('scr-home');
@@ -148,13 +161,15 @@
       b.className = 'send';
       b.type = 'button';
       b.setAttribute('data-kind', kind.k);
-      var ic = document.createElement('span');
-      ic.className = 'ic';
-      ic.textContent = kind.ic;
+      if (kind.ic) {
+        var ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.textContent = kind.ic;
+        b.appendChild(ic);
+      }
       var tx = document.createElement('span');
       tx.className = 'tx';
       tx.textContent = kind.label;
-      b.appendChild(ic);
       b.appendChild(tx);
       b.onclick = function () { sendMiss(kind.k); };
       wrap.appendChild(b);
@@ -308,10 +323,20 @@
       }
     };
 
-    ws.onclose = function () {
+    ws.onclose = function (ev) {
       state.live = false;
       linkChip('Offline', false);
       sendButtons().forEach(function (b) { b.disabled = !state.friend; });
+
+      /* 4001 is the server saying it does not know this token. Keep the
+         session on the device and show the stale screen, but stop
+         reconnecting in a tight loop. */
+      if (ev && ev.code === 4001) {
+        state.stale = true;
+        paint();
+        retryTimer = setTimeout(connect, 30000);
+        return;
+      }
       retry = Math.min(retry + 1, 6);
       retryTimer = setTimeout(connect, [800, 1500, 2500, 4000, 7000, 11000, 15000][retry]);
     };
@@ -354,6 +379,7 @@
     var kind = kindOf(m.kind);
     popKind = kind.k;
     $('popIcon').textContent = kind.ic;
+    $('popIcon').hidden = !kind.ic;
     $('popSaid').textContent = kind.said;
     $('popWho').textContent = m.fromName;
     $('popWhen').textContent = ago(m.at);
@@ -580,6 +606,8 @@
       state.user = d.user;
       state.friend = d.friend;
       state.activity = d.activity || [];
+      if (d.user && d.user.name) put(K.name, d.user.name);
+      if (state.stale) { state.stale = false; toast('Signed back in'); }
       paintRequests(d.incoming);
       if (d.outgoing && d.outgoing.length) {
         $('connectNote').textContent = 'Waiting for ' + d.outgoing[0].to + ' to accept.';
@@ -587,7 +615,11 @@
       paint();
       paintSettings();
     }).catch(function (e) {
-      if (/session/i.test(e.message)) { del(K.token); state.token = null; paint(); }
+      /* The token is never thrown away here. A 401 can mean the server
+         restarted or lost its data, and silently wiping the session on a
+         server hiccup is exactly the surprise logout this avoids. Only the
+         user signs themselves out. */
+      if (e && e.status === 401) { state.stale = true; paint(); }
     });
   }
 
@@ -600,6 +632,7 @@
         state.token = d.token;
         state.user = d.user;
         put(K.token, d.token);
+        put(K.name, d.user.name);
         paint();
         connect();
         toast('Your code is ' + d.user.code);
@@ -658,6 +691,20 @@
   $('openSettings').onclick = openSettings;
   $('closeSettings').onclick = closeSettings;
   $('geoAsk').onclick = askLocation;
+
+  $('staleRetry').onclick = function () {
+    toast('Checking');
+    refresh().then(function () {
+      if (state.stale) toast('The server still does not recognise this device');
+      else connect();
+    });
+  };
+
+  $('staleFresh').onclick = function () {
+    if (!confirm('Start over? This device gets a new code, and your current connection is lost.')) return;
+    del(K.token); del(K.seen); del(K.outbox); del(K.name);
+    location.reload();
+  };
 
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();

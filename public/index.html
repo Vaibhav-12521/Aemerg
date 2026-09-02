@@ -62,13 +62,23 @@
     </div>
   </section>
 
+  <section class="screen" id="scr-stale">
+    <div class="card">
+      <h2>Still signed in here</h2>
+      <p class="sub" id="staleWho">The server does not recognise this device right now.</p>
+      <p class="sub">Your account is still on this device. This usually means the server restarted or lost its data. Nothing has been deleted here.</p>
+      <button class="btn solid" id="staleRetry" type="button">Try again</button>
+      <button class="btn ghost" id="staleFresh" type="button">Start over with a new code</button>
+    </div>
+  </section>
+
   <section class="screen" id="scr-home">
     <div id="status"><span class="dot"></span><span id="statusText">Offline</span></div>
     <h1 id="friendName">-</h1>
     <p id="dateline"><span class="rule"></span><span id="dateText">11 September</span><span class="rule"></span></p>
     <div id="sendRow">
       <button class="send big" id="miss" type="button" data-kind="missyou">
-        <span class="ic">&#128153;</span><span class="tx">Miss You</span>
+        <span class="tx">Miss You</span>
       </button>
     </div>
     <div id="sendMore"></div>
@@ -156,7 +166,7 @@
 
 <div id="popup" role="alertdialog" aria-modal="true" aria-label="Miss you">
   <div class="inner">
-    <div class="heart" id="popIcon">&#128153;</div>
+    <div class="popic" id="popIcon" hidden></div>
     <div class="said" id="popSaid">Misses you</div>
     <div class="who" id="popWho">-</div>
     <div class="when" id="popWhen">-</div>

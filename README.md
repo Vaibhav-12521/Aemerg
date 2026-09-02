@@ -104,6 +104,23 @@ Settings says so when it detects iOS.
 Icons are generated, not hand-drawn: `node tools/make-icons.js` redraws the
 whole set from the palette with no image dependencies.
 
+### Staying signed in
+
+Nothing signs you out but you. A session lives in the browser and is removed
+only by **Sign out of this browser**, or by **Start over with a new code** on
+the screen below.
+
+If the server stops recognising a device (it restarted with no `data.json`, or
+was moved), the app does **not** quietly drop back to sign-up. It keeps the
+session, says *Still signed in here*, names who the device belongs to, and
+offers **Try again**. Reconnecting on its own is enough to clear it.
+
+On the server side an account is written to disk the instant it exists, not
+after a delay, so killing the process outright the moment someone registers
+cannot lose them. Writes land on a temp file and are renamed over the real one,
+so a crash mid-write leaves the previous file intact rather than a truncated
+one. Queued notes are saved the same way.
+
 ### Where the data lives
 
 * `data.json` next to `server.js` - accounts, codes, links, pending events and
