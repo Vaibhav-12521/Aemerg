@@ -202,11 +202,21 @@ do not regenerate it casually: new keys invalidate every subscription anyone
 has already made. In production set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY` and
 `VAPID_PRIVATE_KEY` as environment variables instead of shipping the file.
 
-A push is sent only when the note could not be handed to a live socket, which
-is exactly the case that matters: your friend's app is closed. If they have it
-open the socket delivers it and no push is sent, so nothing arrives twice. A
-push service reporting a subscription gone (404 or 410) has it dropped. Every
-note is still queued on the server regardless, so push failing never loses one.
+A push is sent whenever your friend is not actually looking at the app, which
+is what "closed" means in practice. Being present is something the app claims
+only while it is in front of you: the moment it is backgrounded, the screen is
+locked or the tab is closed it says so, and stops claiming it. A tab that was
+killed outright cannot say anything, so the claim expires on its own within
+about ten seconds.
+
+That distinction is the whole thing. If presence merely meant "the tab exists",
+a backgrounded app would go on claiming it, the server would think the note had
+been seen, and nothing would ever reach the phone.
+
+With the app open in front of them the note arrives in the app and no push is
+sent, so nothing arrives twice. A push service reporting a subscription gone
+(404 or 410) has it dropped. Every note is queued on the server regardless, so
+a push that fails never loses one: it is still there when the app is opened.
 
 Push needs https. On localhost it works as-is; anywhere else put the app behind
 TLS. On iPhone it needs iOS 16.4 or later **and** Aemerg added to the Home

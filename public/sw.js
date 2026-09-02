@@ -6,7 +6,7 @@
 
 'use strict';
 
-var VERSION = 'aemerg-v4';
+var VERSION = 'aemerg-v5';
 
 var SHELL = [
   '/',
@@ -121,10 +121,19 @@ self.addEventListener('push', function (e) {
       body: body,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
+      /* a tag per note, so two notes stack rather than one replacing the other */
       tag: 'aemerg-' + (d.id || Date.now()),
       renotify: true,
       timestamp: d.at || Date.now(),
+      vibrate: [80, 60, 80],
       data: { url: '/', id: d.id || '' }
+    }).catch(function () {
+      /* showing something is not optional: a push that displays nothing is
+         counted against the origin and can cost the permission */
+      return self.registration.showNotification('Aemerg', {
+        body: 'Someone is thinking of you.',
+        icon: '/icons/icon-192.png'
+      });
     })
   );
 });

@@ -418,16 +418,31 @@
      a note that arrives while the app is hidden comes as a push anyway. */
 
   var POLL_ACTIVE = 3000;
-  var POLL_IDLE = 30000;
   var pollTimer = null;
   var polling = false;
   var missed = 0;
 
   function pollDelay() {
-    if (document.hidden) return POLL_IDLE;
     /* back off while the server is unreachable rather than hammering it */
     if (missed > 0) return Math.min(POLL_ACTIVE * Math.pow(2, Math.min(missed, 4)), 30000);
     return POLL_ACTIVE;
+  }
+
+  /* Polling is what tells the server someone is present, and being present is
+     what stops a note being pushed to the phone. A hidden tab is nobody: it
+     cannot show the popup, so it must not keep claiming the seat. It says so
+     at once rather than waiting for presence to lapse, and stops polling
+     until it is looked at again. Push covers everything in between. */
+  function markAway() {
+    if (!state.token) return;
+    try {
+      fetch('/api/offline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
+        body: '{}',
+        keepalive: true
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   function schedule(delay) {
@@ -596,13 +611,6 @@
 
     if (!Collage.reduced) {
       setTimeout(function () { Collage.celebrate($('popWho'), kind.hue); }, 160);
-    }
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(m.fromName + ' ' + kind.inn, {
-          body: m.text || 'Open Aemerg to send one back.'
-        });
-      } catch (e) {}
     }
   }
 
@@ -1116,7 +1124,12 @@
   window.addEventListener('offline', function () { linkChip('Offline', false); });
 
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { schedule(POLL_IDLE); return; }
+    if (document.hidden) {
+      clearTimeout(pollTimer);
+      markAway();
+      linkChip('Away', false);
+      return;
+    }
     missed = 0;
     schedule(0);
     refresh();
