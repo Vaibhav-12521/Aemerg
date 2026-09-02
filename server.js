@@ -6,11 +6,12 @@ const http    = require('http');
 const crypto  = require('crypto');
 const express = require('express');
 const { WebSocketServer } = require('ws');
+const webpush = require('web-push');
 
 const PORT  = process.env.PORT || 8787;
 const STORE = path.join(__dirname, 'data.json');
 
-const blank = { users: {}, codes: {}, requests: {}, pending: {}, activity: {} };
+const blank = { users: {}, codes: {}, requests: {}, pending: {}, activity: {}, subs: {} };
 let db = blank;
 
 try {
@@ -30,17 +31,46 @@ try {
 let saveTimer = null;
 let dirty = false;
 
+/* On Windows a rename over an existing file fails with EPERM or EBUSY while
+   anything else holds a handle on it, which a virus scanner or the indexer
+   will do at random. That is transient, so retry briefly; a save that is
+   simply dropped is how an account goes missing and a user gets signed out. */
+
+const napper = new Int32Array(new SharedArrayBuffer(4));
+const nap = (ms) => { Atomics.wait(napper, 0, 0, ms); };
+
+function renameWithRetry(from, to) {
+  const backoff = [0, 5, 15, 40, 100, 250];
+  let last;
+  for (let i = 0; i < backoff.length; i++) {
+    if (backoff[i]) nap(backoff[i]);
+    try { fs.renameSync(from, to); return; } catch (err) {
+      last = err;
+      if (err.code !== 'EPERM' && err.code !== 'EACCES' && err.code !== 'EBUSY') throw err;
+    }
+  }
+  throw last;
+}
+
 function writeNow() {
   clearTimeout(saveTimer);
   saveTimer = null;
   dirty = false;
   const tmp = STORE + '.tmp';
+  const json = JSON.stringify(db, null, 2);
   try {
-    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
-    fs.renameSync(tmp, STORE);
+    fs.writeFileSync(tmp, json);
+    renameWithRetry(tmp, STORE);
   } catch (err) {
-    console.error('could not write data.json:', err.message);
-    try { fs.unlinkSync(tmp); } catch (e) {}
+    /* the atomic path is gone, so take the small risk of a direct write
+       rather than the certain loss of dropping the save entirely */
+    try {
+      fs.writeFileSync(STORE, json);
+      try { fs.unlinkSync(tmp); } catch (e) {}
+    } catch (err2) {
+      dirty = true;
+      console.error('could not write data.json:', err2.message);
+    }
   }
 }
 
@@ -66,6 +96,36 @@ process.on('uncaughtException', (err) => {
   if (dirty) writeNow();
   process.exit(1);
 });
+
+/* Web Push. The key pair identifies this server to the push services; it
+   lives in vapid.json, which is generated once by tools/vapid-keys.js and is
+   not committed. Without it the app still works, it just cannot reach a
+   closed browser, and it says so rather than failing quietly. */
+
+const VAPID_FILE = path.join(__dirname, 'vapid.json');
+let vapid = null;
+
+try {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    vapid = {
+      subject: process.env.VAPID_SUBJECT || 'mailto:aemerg@example.com',
+      publicKey: process.env.VAPID_PUBLIC_KEY,
+      privateKey: process.env.VAPID_PRIVATE_KEY
+    };
+  } else if (fs.existsSync(VAPID_FILE)) {
+    vapid = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+  }
+} catch (err) {
+  console.error('vapid.json unreadable:', err.message);
+}
+
+if (vapid && vapid.publicKey && vapid.privateKey) {
+  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+  console.log('push notifications are on');
+} else {
+  vapid = null;
+  console.log('push notifications are off: run node tools/vapid-keys.js to turn them on');
+}
 
 const id  = () => crypto.randomBytes(9).toString('hex');
 const now = () => Date.now();
@@ -152,6 +212,60 @@ function ack(uid, evtId) {
   if (next.length !== list.length) { db.pending[uid] = next; save(); }
 }
 
+/* One device is one subscription, keyed by its endpoint so re-subscribing
+   on the same browser replaces rather than duplicates. */
+
+function addSub(uid, sub) {
+  if (!sub || !sub.endpoint) return false;
+  if (!db.subs[uid]) db.subs[uid] = [];
+  const list = db.subs[uid];
+  const at = list.findIndex((s) => s.endpoint === sub.endpoint);
+  const row = { endpoint: sub.endpoint, keys: sub.keys, at: now() };
+  if (at > -1) list[at] = row; else list.push(row);
+  if (list.length > 12) list.splice(0, list.length - 12);
+  save(true);
+  return true;
+}
+
+function removeSub(uid, endpoint) {
+  const list = db.subs[uid];
+  if (!list) return;
+  const next = list.filter((s) => s.endpoint !== endpoint);
+  if (next.length !== list.length) {
+    if (next.length) db.subs[uid] = next; else delete db.subs[uid];
+    save(true);
+  }
+}
+
+/* Sent when the note could not be handed to a live socket, which is exactly
+   the case the user cares about: their friend's app is closed. A push service
+   answering 404 or 410 means that subscription is dead, so it is dropped. */
+
+function pushTo(uid, evt) {
+  if (!vapid) return;
+  const list = db.subs[uid];
+  if (!list || !list.length) return;
+
+  const payload = JSON.stringify({
+    id: evt.id,
+    kind: evt.kind,
+    text: evt.text || '',
+    fromName: evt.fromName,
+    at: evt.at
+  });
+
+  for (const sub of list.slice()) {
+    webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, payload, {
+      TTL: 60 * 60 * 24 * 7,
+      urgency: 'high'
+    }).catch((err) => {
+      const code = err && err.statusCode;
+      if (code === 404 || code === 410) removeSub(uid, sub.endpoint);
+      else console.error('push failed (' + code + '):', err && err.message);
+    });
+  }
+}
+
 function logActivity(uid, entry) {
   if (!db.activity[uid]) db.activity[uid] = [];
   db.activity[uid].unshift(entry);
@@ -183,6 +297,23 @@ app.post('/api/register', (req, res) => {
   res.json({ token: db.users[uid].token, user: publicUser(uid) });
 });
 
+app.get('/api/push-key', (req, res) => {
+  res.json({ enabled: !!vapid, publicKey: vapid ? vapid.publicKey : null });
+});
+
+app.post('/api/subscribe', auth, (req, res) => {
+  if (!vapid) return res.status(503).json({ error: 'Push is not set up on this server.' });
+  if (!addSub(req.uid, req.body && req.body.subscription)) {
+    return res.status(400).json({ error: 'That subscription is not usable.' });
+  }
+  res.json({ ok: true, devices: (db.subs[req.uid] || []).length });
+});
+
+app.post('/api/unsubscribe', auth, (req, res) => {
+  removeSub(req.uid, String((req.body && req.body.endpoint) || ''));
+  res.json({ ok: true, devices: (db.subs[req.uid] || []).length });
+});
+
 app.get('/api/me', auth, (req, res) => {
   res.json({
     user:     publicUser(req.uid),
@@ -193,7 +324,8 @@ app.get('/api/me', auth, (req, res) => {
     outgoing: Object.values(db.requests)
                     .filter((r) => r.fromId === req.uid && r.status === 'open')
                     .map((r) => ({ id: r.id, to: db.users[r.toId] ? db.users[r.toId].name : 'Someone', at: r.createdAt })),
-    activity: db.activity[req.uid] || []
+    activity: db.activity[req.uid] || [],
+    push: { enabled: !!vapid, devices: (db.subs[req.uid] || []).length }
   });
 });
 
@@ -249,7 +381,9 @@ app.post('/api/connect', auth, (req, res) => {
   const rid = id();
   db.requests[rid] = { id: rid, fromId: req.uid, toId: otherId, status: 'open', createdAt: now() };
   save();
-  sendTo(otherId, { t: 'request', request: { id: rid, from: me.name, at: now() } });
+  if (!sendTo(otherId, { t: 'request', request: { id: rid, from: me.name, at: now() } })) {
+    pushTo(otherId, { id: rid, kind: 'request', fromName: me.name, at: now() });
+  }
   res.json({ linked: false, pending: true });
 });
 
@@ -326,6 +460,8 @@ wss.on('connection', (ws, req) => {
       if (text) evt.text = text;
       queue(me.friendId, evt);
       const delivered = sendTo(me.friendId, Object.assign({ t: 'missyou' }, evt));
+      /* nobody is holding a socket, so reach the closed app instead */
+      if (!delivered) pushTo(me.friendId, evt);
       logActivity(uid,         { id: evt.id, kind, text, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
       logActivity(me.friendId, { id: evt.id, kind, text, dir: 'in',  name: me.name,                    at: evt.at });
       ws.send(JSON.stringify({ t: 'sent', id: evt.id, kind, text, at: evt.at, delivered }));

@@ -6,7 +6,7 @@
 
 'use strict';
 
-var VERSION = 'aemerg-v2';
+var VERSION = 'aemerg-v3';
 
 var SHELL = [
   '/',
@@ -87,5 +87,91 @@ self.addEventListener('fetch', function (e) {
       }).catch(function () { return hit; });
       return hit || live;
     })
+  );
+});
+
+/* ---------------------------------------------------------------- push ---
+
+   These two handlers are the only part of Aemerg that runs when the app is
+   closed. The browser wakes the worker, hands it the payload, and it must
+   show a notification: on most platforms a push that shows nothing is
+   counted against the origin and can cost the permission. */
+
+var KIND_SAYS = {
+  missyou:  'misses you',
+  hug:      'sent you a hug',
+  thinking: 'is thinking of you',
+  laugh:    'is laughing with you',
+  proud:    'is proud of you',
+  night:    'says good night',
+  text:     'wrote to you',
+  request:  'wants to connect with you'
+};
+
+self.addEventListener('push', function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = {}; }
+
+  var who = d.fromName || 'A friend';
+  var says = KIND_SAYS[d.kind] || 'is thinking of you';
+  var title = who + ' ' + says;
+  var body = d.text || 'Open Aemerg to send one back.';
+
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body: body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: 'aemerg-' + (d.id || Date.now()),
+      renotify: true,
+      timestamp: d.at || Date.now(),
+      data: { url: '/', id: d.id || '' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || '/';
+
+  /* focus a tab that is already open rather than stacking new ones */
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (new URL(c.url).origin === self.location.origin) {
+          return c.focus().then(function (f) {
+            if (f && f.postMessage) f.postMessage({ t: 'opened-from-push' });
+            return f;
+          });
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
+/* A subscription can be rotated by the browser. When that happens the old
+   endpoint stops working, so re-subscribe and tell the server the new one. */
+self.addEventListener('pushsubscriptionchange', function (e) {
+  e.waitUntil(
+    self.registration.pushManager.getSubscription()
+      .then(function (existing) {
+        if (existing) return existing;
+        var key = e.oldSubscription && e.oldSubscription.options
+          ? e.oldSubscription.options.applicationServerKey : null;
+        if (!key) return null;
+        return self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key
+        });
+      })
+      .then(function (sub) {
+        if (!sub) return;
+        return self.clients.matchAll({ includeUncontrolled: true }).then(function (list) {
+          list.forEach(function (c) { c.postMessage({ t: 'resubscribe' }); });
+        });
+      })
+      .catch(function () {})
   );
 });

@@ -65,6 +65,30 @@
     try { localStorage.removeItem(k); } catch (e) {}
   }
 
+  /* localStorage and cookies are evicted under different rules, so the token
+     is mirrored into both and either one can restore the other. Neither is
+     ever cleared except by the user's own sign-out. */
+
+  function cookieGet(name) {
+    try {
+      var parts = ('; ' + document.cookie).split('; ' + name + '=');
+      if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+    } catch (e) {}
+    return null;
+  }
+
+  function cookieSet(name, value) {
+    try {
+      document.cookie = name + '=' + encodeURIComponent(value) +
+        '; path=/; max-age=34560000; samesite=lax' +
+        (location.protocol === 'https:' ? '; secure' : '');
+    } catch (e) {}
+  }
+
+  function cookieDel(name) {
+    try { document.cookie = name + '=; path=/; max-age=0; samesite=lax'; } catch (e) {}
+  }
+
   function migrate() {
     var was = get('my.schema', null);
     if (was === SCHEMA) return;
@@ -80,9 +104,23 @@
     put('my.schema', SCHEMA);
   }
 
+  /* Run before anything reads the token: whichever store still has it wins. */
+  function reviveSession() {
+    var ls = get(K.token, null);
+    var ck = cookieGet('aemerg_token');
+    if (ls && !ck) cookieSet('aemerg_token', ls);
+    if (!ls && ck) put(K.token, ck);
+
+    var name = get(K.name, null);
+    var nck = cookieGet('aemerg_name');
+    if (name && !nck) cookieSet('aemerg_name', name);
+    if (!name && nck) put(K.name, nck);
+  }
+
   function jsonGet(k, fb) { try { return JSON.parse(get(k, JSON.stringify(fb))) || fb; } catch (e) { return fb; } }
 
   migrate();
+  reviveSession();
 
   var seen   = jsonGet(K.seen, []);
   var outbox = jsonGet(K.outbox, []);
@@ -132,6 +170,40 @@
     if (s < 86400) return Math.round(s / 3600) + ' hours ago';
     if (s < 172800) return 'yesterday';
     return Math.round(s / 86400) + ' days ago';
+  }
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function clockOf(ts) {
+    var d = new Date(ts);
+    var h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  /* Which day a row belongs to, as the reader would say it. */
+  function dayLabel(ts) {
+    var d = new Date(ts);
+    var today = new Date();
+    var midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    var days = Math.floor((midnight - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    var label = d.getDate() + ' ' + MONTHS[d.getMonth()];
+    if (d.getFullYear() !== today.getFullYear()) label += ' ' + d.getFullYear();
+    return label;
+  }
+
+  function fullStamp(ts) {
+    var d = new Date(ts);
+    try {
+      return d.toLocaleString(undefined, {
+        weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) {
+      return dayLabel(ts) + ' ' + clockOf(ts);
+    }
   }
 
   function shortAgo(ts) {
@@ -243,11 +315,24 @@
   function paintActivity() {
     var list = $('activityList');
     list.innerHTML = '';
-    var rows = state.activity.slice(0, 6);
+    var rows = state.activity.slice(0, 12);
     $('activityNone').hidden = rows.length > 0;
+
+    var lastDay = null;
     rows.forEach(function (a) {
+      /* a heading whenever the day changes, so every row has a date */
+      var day = dayLabel(a.at);
+      if (day !== lastDay) {
+        lastDay = day;
+        var sep = document.createElement('li');
+        sep.className = 'day';
+        sep.textContent = day;
+        list.appendChild(sep);
+      }
+
       var li = document.createElement('li');
       li.className = a.dir;
+      li.title = fullStamp(a.at);
       var arrow = document.createElement('span');
       arrow.className = 'arrow';
       arrow.textContent = a.dir === 'in' ? '←' : '→';
@@ -256,14 +341,15 @@
       var kind = kindOf(a.kind);
       if (a.text) {
         who.textContent = (a.dir === 'in' ? a.name + ': ' : 'You: ') + a.text;
-        li.title = a.text;
+        li.title = a.text + '\n' + fullStamp(a.at);
       } else {
         who.textContent = (kind.ic ? kind.ic + '  ' : '') +
           (a.dir === 'in' ? a.name + ' ' + kind.inn : kind.out + ' ' + a.name);
       }
-      var when = document.createElement('span');
+      var when = document.createElement('time');
       when.className = 'when';
-      when.textContent = shortAgo(a.at);
+      when.dateTime = new Date(a.at).toISOString();
+      when.textContent = clockOf(a.at);
       li.appendChild(arrow); li.appendChild(who); li.appendChild(when);
       list.appendChild(li);
     });
@@ -448,7 +534,8 @@
     $('popText').hidden = !m.text;
     $('popBack').textContent = kind.k === 'text' ? 'Write back' : 'Send one back';
     $('popWho').textContent = m.fromName;
-    $('popWhen').textContent = ago(m.at);
+    $('popWhen').textContent = ago(m.at) + '  \u00B7  ' + dayLabel(m.at) + ' ' + clockOf(m.at);
+    $('popWhen').title = fullStamp(m.at);
     $('popQueued').hidden = (Date.now() - m.at) < 15000;
     $('popup').classList.add('on');
     $('popClose').focus();
@@ -609,6 +696,111 @@
     }
   }
 
+  /* ---- push: reaching the app when it is closed ---- */
+
+  var pushKey = null;
+  var pushSub = null;
+
+  function b64ToBytes(b64) {
+    var pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  function pushSupported() {
+    return 'serviceWorker' in navigator &&
+           'PushManager' in window &&
+           'Notification' in window;
+  }
+
+  function paintPush() {
+    var st = $('pushState'), how = $('pushHow');
+    if (!st) return;
+
+    if (!pushSupported()) {
+      st.textContent = 'Not supported here';
+      how.textContent = /iphone|ipad|ipod/i.test(navigator.userAgent)
+        ? 'On iPhone this needs iOS 16.4 or later, and Aemerg must be added to the Home Screen first.'
+        : 'This browser cannot deliver notifications while the app is closed.';
+      return;
+    }
+    if (!pushKey) {
+      st.textContent = 'Off on this server';
+      how.textContent = 'The server has no push keys. Run node tools/vapid-keys.js and restart it.';
+      return;
+    }
+    if (Notification.permission !== 'granted') {
+      st.textContent = 'Needs permission';
+      how.textContent = 'Allow notifications above, and notes will arrive even when Aemerg is closed.';
+      return;
+    }
+    if (pushSub) {
+      var n = state.push && state.push.devices ? state.push.devices : 1;
+      st.textContent = 'On for this device';
+      how.textContent = n > 1
+        ? 'Notes reach you here even when Aemerg is closed. ' + n + ' devices are set up.'
+        : 'Notes reach you here even when Aemerg is closed.';
+      return;
+    }
+    st.textContent = 'Setting up';
+    how.textContent = '';
+  }
+
+  function loadPushKey() {
+    if (!pushSupported()) { paintPush(); return Promise.resolve(); }
+    return fetch('/api/push-key')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        pushKey = d && d.enabled ? d.publicKey : null;
+        paintPush();
+      })
+      .catch(function () { paintPush(); });
+  }
+
+  /* Subscribing needs three things to already be true: a worker, a granted
+     permission and a server key. Called after each of them lands, and it is
+     safe to call repeatedly. */
+  function subscribePush() {
+    if (!pushSupported() || !pushKey || !state.token) { paintPush(); return; }
+    if (Notification.permission !== 'granted') { paintPush(); return; }
+
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (existing) {
+        if (existing) return existing;
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: b64ToBytes(pushKey)
+        });
+      });
+    }).then(function (sub) {
+      pushSub = sub;
+      return api('subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+    }).then(function (d) {
+      if (d && typeof d.devices === 'number') state.push = { enabled: true, devices: d.devices };
+      paintPush();
+    }).catch(function (err) {
+      pushSub = null;
+      paintPush();
+      if (err && /denied|permission/i.test(err.message || '')) return;
+      $('pushHow').textContent = 'Could not set up background notifications on this device.';
+    });
+  }
+
+  function unsubscribePush() {
+    if (!pushSupported()) return;
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (!sub) return;
+      var endpoint = sub.endpoint;
+      return sub.unsubscribe().then(function () {
+        return api('unsubscribe', { method: 'POST', body: { endpoint: endpoint } });
+      });
+    }).catch(function () {});
+  }
+
   function registerSw() {
     if (!('serviceWorker' in navigator)) { paintPwa(); return; }
     if (!window.isSecureContext && location.hostname !== 'localhost') { paintPwa(); return; }
@@ -632,6 +824,12 @@
 
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (reloading) location.reload();
+    });
+
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (!e.data) return;
+      if (e.data.t === 'resubscribe') { pushSub = null; subscribePush(); }
+      if (e.data.t === 'opened-from-push') refresh();
     });
   }
 
@@ -660,6 +858,7 @@
     paintSettings();
     refreshGeoState();
     paintPwa();
+    paintPush();
     $('settings').classList.add('on');
     $('settings').setAttribute('aria-hidden', 'false');
   }
@@ -674,7 +873,9 @@
       state.user = d.user;
       state.friend = d.friend;
       state.activity = d.activity || [];
-      if (d.user && d.user.name) put(K.name, d.user.name);
+      if (d.user && d.user.name) { put(K.name, d.user.name); cookieSet('aemerg_name', d.user.name); }
+      if (state.token) cookieSet('aemerg_token', state.token);
+      if (d.push) state.push = d.push;
       if (state.stale) { state.stale = false; toast('Signed back in'); }
       paintRequests(d.incoming);
       if (d.outgoing && d.outgoing.length) {
@@ -701,6 +902,8 @@
         state.user = d.user;
         put(K.token, d.token);
         put(K.name, d.user.name);
+        cookieSet('aemerg_token', d.token);
+        cookieSet('aemerg_name', d.user.name);
         paint();
         connect();
         toast('Your code is ' + d.user.code);
@@ -795,6 +998,7 @@
   $('staleFresh').onclick = function () {
     if (!confirm('Start over? This device gets a new code, and your current connection is lost.')) return;
     del(K.token); del(K.seen); del(K.outbox); del(K.name);
+    cookieDel('aemerg_token'); cookieDel('aemerg_name');
     location.reload();
   };
 
@@ -825,6 +1029,7 @@
     Notification.requestPermission().then(function (perm) {
       paintPwa();
       toast(perm === 'granted' ? 'Notifications allowed' : 'Notifications not allowed');
+      if (perm === 'granted') subscribePush();
     }).catch(function () {});
   };
 
@@ -849,7 +1054,9 @@
   };
 
   $('signOut').onclick = function () {
-    del(K.token); del(K.seen); del(K.outbox);
+    del(K.token); del(K.seen); del(K.outbox); del(K.name);
+    cookieDel('aemerg_token'); cookieDel('aemerg_name');
+    unsubscribePush();
     location.reload();
   };
 
@@ -909,5 +1116,10 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitName);
   registerSw();
   paintPwa();
+  if (state.token) {
+    loadPushKey().then(function () {
+      if (pushSupported() && Notification.permission === 'granted') subscribePush();
+    });
+  }
 
 })();

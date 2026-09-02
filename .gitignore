@@ -6,3 +6,4 @@ data.json.tmp
 .env.*
 Thumbs.db
 .DS_Store
+vapid.json

@@ -459,19 +459,36 @@ main::-webkit-scrollbar{width:0;height:0}
   padding:16px 18px;
   display:none;
   text-align:left;
+  max-height:min(42vh,340px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
 }
+#activity::-webkit-scrollbar{width:0}
 #activity.on{display:block}
 #activity h3{
   font-size:9px;font-weight:400;letter-spacing:.3em;text-transform:uppercase;
   color:var(--muted);margin-bottom:10px;
 }
-#activity ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+#activity ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+
+/* a heading whenever the day changes, so every row carries a date */
+#activity li.day{
+  display:block;
+  margin:6px 0 1px;
+  font-size:8.5px;
+  letter-spacing:.28em;
+  text-indent:.28em;
+  text-transform:uppercase;
+  color:var(--ember);
+  opacity:.85;
+}
+#activity li.day:first-child{margin-top:0}
 #activity li{
   display:flex;align-items:baseline;gap:9px;
   font-size:11px;color:var(--ivory);
 }
 #activity li .who{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#activity li .when{font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-variant-numeric:tabular-nums}
+#activity li .when{flex:none;font-size:9.5px;letter-spacing:.06em;color:var(--muted);font-variant-numeric:tabular-nums}
 #activity li .arrow{font-size:11px;line-height:1}
 #activity li.in  .arrow{color:var(--rose)}
 #activity li.out .arrow{color:var(--blue)}
