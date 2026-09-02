@@ -32,7 +32,6 @@
     stale: false
   };
 
-  var ws = null, retry = 0, retryTimer = null;
   var popQueue = [], popShowing = false, popKind = 'missyou';
 
   /* Storage is versioned, never wiped. A new version of the app migrates what
@@ -403,98 +402,145 @@
     $('setLink').textContent = text;
   }
 
+  /* ------------------------------------------------------------ polling ---
+
+     There is no socket. One call to /api/poll says the caller is here, brings
+     back anything waiting, and reports whether the friend is around. It runs
+     often while the app is in front of you and slowly when it is not, because
+     a note that arrives while the app is hidden comes as a push anyway. */
+
+  var POLL_ACTIVE = 3000;
+  var POLL_IDLE = 30000;
+  var pollTimer = null;
+  var polling = false;
+  var missed = 0;
+
+  function pollDelay() {
+    if (document.hidden) return POLL_IDLE;
+    /* back off while the server is unreachable rather than hammering it */
+    if (missed > 0) return Math.min(POLL_ACTIVE * Math.pow(2, Math.min(missed, 4)), 30000);
+    return POLL_ACTIVE;
+  }
+
+  function schedule(delay) {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(tick, delay === undefined ? pollDelay() : delay);
+  }
+
   function connect() {
-    if (!state.token) return;
-    clearTimeout(retryTimer);
-    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    /* kept as the name the rest of the app calls to mean "talk to the server now" */
+    schedule(0);
+  }
 
-    linkChip('Connecting', false);
-    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws?token=' + encodeURIComponent(state.token));
+  function tick() {
+    if (polling || !state.token) return;
+    polling = true;
 
-    ws.onopen = function () {
-      retry = 0;
+    api('poll').then(function (d) {
+      polling = false;
+      missed = 0;
       state.live = true;
       linkChip('Live', true);
-      flushOutbox();
-    };
 
-    ws.onmessage = function (ev) {
-      var m;
-      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (state.stale) { state.stale = false; paint(); }
 
-      if (m.t === 'ready') {
-        state.user = m.user;
-        state.friend = m.friend;
-        paint();
-        return;
-      }
-      if (m.t === 'friend') {
-        state.friend = m.friend;
-        if (m.friend) { toast('Connected with ' + m.friend.name); Collage.celebrate($('mark')); }
+      var hadFriend = !!state.friend;
+      var friendChanged = (!!d.friend !== hadFriend) ||
+        (d.friend && state.friend && d.friend.id !== state.friend.id);
+
+      if (friendChanged) {
+        state.friend = d.friend;
+        if (d.friend) { toast('Connected with ' + d.friend.name); Collage.celebrate($('mark')); }
         else toast('Your friend disconnected.');
         paintSettings();
         paint();
-        return;
-      }
-      if (m.t === 'presence') { setPresence(m.online); return; }
-      if (m.t === 'request')  { paintRequests([m.request]); toast(m.request.from + ' wants to connect'); return; }
-      if (m.t === 'error')    { toast(m.text); return; }
-
-      if (m.t === 'sent') {
-        addActivity({ id: m.id, kind: m.kind, text: m.text, dir: 'out', name: state.friend ? state.friend.name : 'your friend', at: m.at });
-        if (m.delivered) {
-          toast('Delivered');
-        } else {
-          state.awayCount++;
-          $('setQueued').textContent = String(state.awayCount);
-          toast('Saved. They will get it the moment they come online');
-        }
-        return;
+      } else if (d.friend) {
+        setPresence(d.friend.online);
       }
 
-      if (m.t === 'missyou') {
+      if (d.requests && d.requests.length) paintRequests(d.requests);
 
-        try { ws.send(JSON.stringify({ t: 'ack', id: m.id })); } catch (e) {}
-        if (!markSeen(m.id)) return;
-        addActivity({ id: m.id, kind: m.kind, text: m.text, dir: 'in', name: m.fromName, at: m.at });
-        popQueue.push(m);
-        nextPopup();
-      }
-    };
+      if (d.events && d.events.length) receive(d.events);
+      if (outbox.length) flushOutbox();
 
-    ws.onclose = function (ev) {
+      schedule();
+    }).catch(function (err) {
+      polling = false;
       state.live = false;
-      linkChip('Offline', false);
-      sendButtons().forEach(function (b) { b.disabled = !state.friend; });
+      missed++;
 
-      /* 4001 is the server saying it does not know this token. Keep the
-         session on the device and show the stale screen, but stop
-         reconnecting in a tight loop. */
-      if (ev && ev.code === 4001) {
+      if (err && err.status === 401) {
+        /* the server does not know this session; keep it and say so */
         state.stale = true;
+        linkChip('Offline', false);
         paint();
-        retryTimer = setTimeout(connect, 30000);
+        schedule(30000);
         return;
       }
-      retry = Math.min(retry + 1, 6);
-      retryTimer = setTimeout(connect, [800, 1500, 2500, 4000, 7000, 11000, 15000][retry]);
-    };
+      linkChip(navigator.onLine === false ? 'Offline' : 'Reconnecting', false);
+      schedule();
+    });
+  }
 
-    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  /* Everything waiting is acknowledged in one call, then anything not seen
+     before is shown. The server only drops a note once it is acknowledged,
+     so one that never arrives is simply handed over again next time. */
+  function receive(events) {
+    var fresh = [];
+    var ids = [];
+
+    events.forEach(function (m) {
+      ids.push(m.id);
+      if (!markSeen(m.id)) return;
+      addActivity({ id: m.id, kind: m.kind, text: m.text, dir: 'in', name: m.fromName, at: m.at });
+      fresh.push(m);
+    });
+
+    if (ids.length) {
+      api('ack', { method: 'POST', body: { ids: ids } }).catch(function () {});
+    }
+
+    if (fresh.length) {
+      popQueue = popQueue.concat(fresh);
+      nextPopup();
+    }
   }
 
   function flushOutbox() {
-    if (!ws || ws.readyState !== 1 || !outbox.length) return;
+    if (!outbox.length || !state.token) return;
     var pending = outbox.slice();
     outbox = [];
     put(K.outbox, '[]');
+
+    var chain = Promise.resolve();
     pending.forEach(function (o) {
-      var m = { t: 'missyou', kind: (o && o.kind) || 'missyou' };
-      if (o && o.text) m.text = o.text;
-      ws.send(JSON.stringify(m));
+      chain = chain.then(function () {
+        return api('send', { method: 'POST', body: { kind: (o && o.kind) || 'missyou', text: (o && o.text) || '' } })
+          .then(function (r) { noteSent(r); })
+          .catch(function () {
+            /* still no good: put it back rather than dropping it */
+            outbox.push(o);
+            put(K.outbox, JSON.stringify(outbox));
+          });
+      });
     });
-    if (pending.length) toast('Sent ' + pending.length + ' saved ' + (pending.length === 1 ? 'press' : 'presses'));
+    chain.then(function () {
+      if (pending.length) toast('Sent ' + pending.length + ' saved ' + (pending.length === 1 ? 'note' : 'notes'));
+    });
+  }
+
+  function noteSent(r) {
+    addActivity({
+      id: r.id, kind: r.kind, text: r.text, dir: 'out',
+      name: state.friend ? state.friend.name : 'your friend', at: r.at
+    });
+    if (r.delivered) {
+      toast('Delivered');
+    } else {
+      state.awayCount++;
+      $('setQueued').textContent = String(state.awayCount);
+      toast('Saved. They will get it the moment they open the app');
+    }
   }
 
   function sendMiss(k, text) {
@@ -503,17 +549,15 @@
     text = (text || '').replace(/\s+/g, ' ').trim().slice(0, TEXT_MAX);
     if (kind.k === 'text' && !text) { toast('Type something first'); return; }
 
-    var msg = { t: 'missyou', kind: kind.k };
-    if (text) msg.text = text;
-
-    if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify(msg));
-    } else {
-      outbox.push({ at: Date.now(), kind: kind.k, text: text });
-      put(K.outbox, JSON.stringify(outbox));
-      toast('You are offline. It will send when you reconnect');
-      connect();
-    }
+    api('send', { method: 'POST', body: { kind: kind.k, text: text } })
+      .then(function (r) { noteSent(r); schedule(0); })
+      .catch(function (err) {
+        if (err && err.status && err.status < 500) { toast(err.message); return; }
+        /* the network, not the request: hold it and send on reconnect */
+        outbox.push({ at: Date.now(), kind: kind.k, text: text });
+        put(K.outbox, JSON.stringify(outbox));
+        toast('You are offline. It will send when you reconnect');
+      });
     var btn = (kind.k === 'text' && $('composeGo')) ||
               document.querySelector('.send[data-kind="' + kind.k + '"]') || $('miss');
     var r = btn.getBoundingClientRect();
@@ -1054,10 +1098,13 @@
   };
 
   $('signOut').onclick = function () {
-    del(K.token); del(K.seen); del(K.outbox); del(K.name);
-    cookieDel('aemerg_token'); cookieDel('aemerg_name');
+    clearTimeout(pollTimer);
     unsubscribePush();
-    location.reload();
+    api('signout', { method: 'POST', body: {} }).catch(function () {}).then(function () {
+      del(K.token); del(K.seen); del(K.outbox); del(K.name);
+      cookieDel('aemerg_token'); cookieDel('aemerg_name');
+      location.reload();
+    });
   };
 
   $('addPhotos').onclick = function () { $('file').click(); };
@@ -1093,10 +1140,22 @@
     else if ($('settings').classList.contains('on')) closeSettings();
   });
 
-  window.addEventListener('online',  function () { toast('Back online'); connect(); });
+  window.addEventListener('online',  function () { toast('Back online'); missed = 0; schedule(0); });
   window.addEventListener('offline', function () { linkChip('Offline', false); });
+
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) { connect(); refresh(); }
+    if (document.hidden) { schedule(POLL_IDLE); return; }
+    missed = 0;
+    schedule(0);
+    refresh();
+  });
+
+  /* say we have gone rather than waiting for presence to lapse */
+  window.addEventListener('pagehide', function () {
+    if (!state.token || !navigator.sendBeacon) return;
+    try {
+      navigator.sendBeacon('/api/offline?token=' + encodeURIComponent(state.token), '{}');
+    } catch (e) {}
   });
   window.addEventListener('resize', fitName);
 

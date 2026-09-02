@@ -91,74 +91,90 @@ does not, and Settings will say *Unavailable here*. Put it behind HTTPS - a
 tunnel such as `cloudflared tunnel --url http://localhost:8787` is the quickest
 way - and location works everywhere.
 
-### Deploying free
+### Deploying to Vercel
 
-Nothing here costs anything. The two accounts you need take a minute each and
-neither asks for a card.
+Free, and nothing here asks for a card. Two accounts, five values, one push of
+a button.
 
-The one thing a free host will not give you is a disk, so the store goes to a
-hosted key-value service instead of a file. Set `UPSTASH_REDIS_REST_URL` and
-`UPSTASH_REDIS_REST_TOKEN` and the server uses it; leave them unset and it
-uses `data.json` beside `server.js`, which is what you want locally.
-
-**1. Somewhere to keep the data.** Sign up at upstash.com with GitHub, create a
-Redis database, and open its **REST API** section. Copy the two values:
+**1. Somewhere to keep the data.** A serverless host has no disk, so the store
+lives in a hosted key-value service. Sign in at upstash.com with GitHub, create
+a Redis database, open its **REST API** panel and copy:
 
 ```
 UPSTASH_REDIS_REST_URL     https://xxxx.upstash.io
 UPSTASH_REDIS_REST_TOKEN   AY...
 ```
 
-The free tier allows 10,000 commands a day. A whole session of two friends
-sending notes back and forth costs single digits, so you will not come close.
+The free tier allows 10,000 commands a day. Two friends sending each other
+notes all evening costs a few dozen.
 
-**2. Push keys.** Open `vapid.json`, or run `npm run keys` if you have not made
-a pair yet. You want all three values.
+**2. Push keys.** Open `vapid.json`, or run `npm run keys` to make a pair.
 
-**3. The service.** On render.com sign in with GitHub, then **New > Blueprint**
-and point it at this repo. `render.yaml` asks for the free plan and no disk, so
-Render will not ask you for payment. Fill in the five values when prompted:
+**3. Deploy.** On vercel.com: **Add New > Project**, import this repo, and add
+five environment variables before you click Deploy:
 
-| Key | Where it comes from |
+| Key | From |
 | --- | --- |
-| `UPSTASH_REDIS_REST_URL` | Upstash, REST API section |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash, REST API section |
+| `UPSTASH_REDIS_REST_URL` | Upstash |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash |
 | `VAPID_SUBJECT` | `mailto:` your address |
 | `VAPID_PUBLIC_KEY` | `vapid.json` |
 | `VAPID_PRIVATE_KEY` | `vapid.json` |
 
-`PORT` is set by Render. Do not set it yourself.
+Leave the framework preset alone; `vercel.json` already says the static files
+are in `public` and there is nothing to build.
 
-**4. Check the logs.**
+Or from the terminal:
 
 ```
-push notifications are on
-Aemerg is running on port 10000
-  store: hosted key-value, key aemerg:db
-  users: 0
+npm i -g vercel
+vercel        # follow the prompts
+vercel --prod
 ```
 
-That third line is the one that matters. If it names a file path instead, the
-Upstash variables did not arrive and accounts will vanish on the next restart.
-`/healthz` should answer `{"ok":true,"store":"hosted",...}`.
+**4. Check it.** Open `https://your-app.vercel.app/api/healthz`. You want:
 
-#### What the free plan costs you
+```json
+{"ok":true,"store":"hosted","push":true}
+```
 
-The service sleeps after 15 minutes with nobody using it, and waking takes
-about a minute. That is the whole price, and it is smaller than it sounds:
+`"store":"hosted"` is the line that matters. If it says `"local"` the Upstash
+variables did not arrive, and accounts will vanish between requests.
 
-* **Nothing is lost while it sleeps.** Notes queue in the store.
-* **A note still reaches a sleeping friend.** Sending wakes the server, and the
-  server pushes to their phone, so it buzzes with the app closed.
-* **The slow wait is only the first open of a quiet day.** After that it is warm.
+#### Why it fits on Vercel now
 
-What does suffer is the online dot. While the server sleeps every socket is
-gone, so your friend reads as offline whether or not they are around.
+There is no WebSocket any more. The app asks `/api/poll` every few seconds
+while it is in front of you, which says you are here, brings back anything
+waiting, and reports whether your friend is around. When the app is closed
+Web Push carries the note instead, so polling can stop entirely.
 
-If that ever grates, Render's paid Starter plan with a disk removes the
-sleeping and the Upstash dependency both. Nothing in the code needs to change:
-drop the Upstash variables, set `DATA_DIR` to the mount, and it goes back to
-using a file.
+Presence is a key that expires rather than a socket someone is holding, and
+the store is split across keys rather than kept as one document, so two
+requests arriving at the same instant cannot overwrite each other. Those two
+changes are what make it safe on a host that runs each request in its own
+short-lived process.
+
+A Hobby project may have twelve functions and there are more routes than that,
+so everything arrives through the catch-all at `api/[...path].js` and is
+dispatched inside. The local server calls exactly the same handler, so there
+is one implementation of every route and no chance of the two drifting.
+
+What you give up against a socket: a note takes up to about three seconds to
+appear when both people have the app open, instead of arriving instantly. A
+note to a closed app is unaffected, because that was always push.
+
+#### Running it locally
+
+`npm start` needs nothing configured. With no Upstash variables the store
+falls back to a file beside `server.js`, using the same commands, so what you
+test is what deploys.
+
+#### Also runs on Render
+
+`render.yaml` is still here and still works, on the free plan with the same
+Upstash variables. The difference is that Render keeps one process alive, so
+polling reaches it without a cold start, but it sleeps after fifteen minutes
+idle. Vercel never sleeps but starts a fresh process per request.
 
 ### Notifications when the app is closed
 
@@ -263,16 +279,23 @@ fallback rather than unreadable transparent ones.
 ### Layout
 
 ```
-server.js                    API, WebSocket hub, pending queue
+server.js                    runs the same handler as a local process
 public/index.html            the app shell: onboarding, connect, home, settings
 public/theme.css             the shared candlelit theme
 public/collage.js            the photo backdrop engine
-public/app.js                auth, sockets, notes, geolocation, settings, PWA
+public/app.js                auth, polling, notes, geolocation, settings, PWA
 public/sw.js                 service worker: shell cache, and push while closed
 public/manifest.webmanifest  name, colours, icons, standalone display
 public/icons/                generated by tools/make-icons.js
 tools/make-icons.js          redraws the icon set from the palette
 tools/vapid-keys.js          generates vapid.json for push, once
 vapid.json                   push identity, generated and not committed
+api/[...path].js             the one Vercel function every route arrives at
+lib/handler.js               routes a request to the right piece of core
+lib/core.js                  what the app does, with no idea how it was asked
+lib/store.js                 the keys everything is kept under
+lib/local.js                 the same commands against a file, for local runs
+lib/push.js                  Web Push
+vercel.json                  static root and cache headers
 render.yaml                  the free Render service and its env vars
 ```

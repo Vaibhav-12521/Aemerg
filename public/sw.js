@@ -6,7 +6,7 @@
 
 'use strict';
 
-var VERSION = 'aemerg-v3';
+var VERSION = 'aemerg-v4';
 
 var SHELL = [
   '/',

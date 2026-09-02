@@ -1,9 +1,13 @@
 # Render Blueprint for Aemerg, on the free plan.
 #
 # There is no disk here on purpose. Disks are a paid feature, and asking for
-# one is what makes Render ask for a card. Instead the store lives in a hosted
-# key-value service (Upstash has a free tier that needs no card), which is what
-# lets accounts and queued notes survive a restart on a free instance.
+# one is what makes Render ask for a card. The store lives in a hosted
+# key-value service instead (Upstash has a free tier that needs no card), which
+# is what lets accounts and queued notes survive a restart on a free instance.
+#
+# The app also deploys to Vercel, on the same two Upstash variables. See the
+# README. Render keeps one process alive so polling reaches it without a cold
+# start; Vercel never sleeps but starts fresh per request.
 #
 # The env vars below are marked sync:false, so Render prompts for them rather
 # than keeping them in this file. See the README for where each one comes from.
