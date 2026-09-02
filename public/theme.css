@@ -244,6 +244,10 @@ main::-webkit-scrollbar{width:0;height:0}
 .sub{font-size:12px;line-height:1.7;color:var(--muted)}
 .card p.sub{text-align:center}
 .card .row{display:flex;gap:10px}
+/* the order here is set from script, because which action is the sensible
+   one depends on what the server turned out to be doing */
+.card .stack{display:flex;flex-direction:column;gap:10px}
+.card .stack .btn{width:100%;text-align:center}
 .card .row .btn{flex:1;text-align:center}
 
 #friendName{

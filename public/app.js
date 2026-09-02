@@ -241,20 +241,7 @@
   function paint() {
     if (!state.token)      { screen('scr-onboard'); return; }
     if (state.stale) {
-      var who = get(K.name, '');
-      if (state.staleReason === 'store') {
-        $('staleTitle').textContent = 'The server has no database';
-        $('staleWho').textContent = 'Aemerg is running, but nothing can be saved, so accounts disappear between visits.';
-        $('staleWhy').textContent = 'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN on the host and redeploy. Nothing on this device has been deleted.';
-        $('staleFresh').hidden = true;
-      } else {
-        $('staleTitle').textContent = 'Still signed in here';
-        $('staleWho').textContent = who
-          ? 'This device is signed in as ' + who + ', but the server does not recognise it right now.'
-          : 'The server does not recognise this device right now.';
-        $('staleWhy').textContent = 'Your account is still on this device. This usually means the server restarted or lost its data. Nothing has been deleted here.';
-        $('staleFresh').hidden = false;
-      }
+      paintStale(get(K.name, ''));
       screen('scr-stale');
       return;
     }
@@ -266,6 +253,61 @@
     fitName();
     setPresence(state.friend.online);
     paintActivity();
+  }
+
+  /* Which button leads the card is the whole point: the one that cannot
+     possibly work should never be the one being offered first. */
+  function lead(primary) {
+    var retry = $('staleRetry'), fresh = $('staleFresh'), stack = retry.parentNode;
+    retry.className = primary === 'retry' ? 'btn solid' : 'btn ghost';
+    fresh.className = primary === 'fresh' ? 'btn solid' : 'btn ghost';
+    if (primary === 'fresh') stack.insertBefore(fresh, retry);
+    else stack.insertBefore(retry, fresh);
+  }
+
+  function paintStale(who) {
+    var r = state.staleReason;
+
+    if (r === 'store') {
+      $('staleTitle').textContent = 'The server has no database';
+      $('staleWho').textContent = 'Aemerg is running, but nothing can be saved, so accounts disappear between visits.';
+      $('staleWhy').textContent = 'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN on the host and redeploy. Nothing on this device has been deleted.';
+      $('staleFresh').hidden = true;
+      $('staleRetry').hidden = false;
+      lead('retry');
+      return;
+    }
+
+    $('staleFresh').hidden = false;
+    $('staleRetry').hidden = false;
+
+    if (r === 'gone') {
+      /* the server is fine and simply does not have this account any more */
+      $('staleTitle').textContent = 'This account is gone';
+      $('staleWho').textContent = who
+        ? 'The server is running, but it no longer has the account this device was signed in as (' + who + ').'
+        : 'The server is running, but it no longer has the account this device was signed in as.';
+      $('staleWhy').textContent = 'That happens when the server is reset or its data is cleared. Trying again will not bring it back. Start over to get a new code, then share it with your friend again.';
+      lead('fresh');
+      return;
+    }
+
+    if (r === 'unreachable') {
+      $('staleTitle').textContent = 'Cannot reach the server';
+      $('staleWho').textContent = who
+        ? 'You are still signed in as ' + who + ' on this device.'
+        : 'You are still signed in on this device.';
+      $('staleWhy').textContent = 'Aemerg is not answering. This is usually the connection or a server still starting up. Nothing has been lost, and it will pick up on its own.';
+      lead('retry');
+      return;
+    }
+
+    $('staleTitle').textContent = 'Still signed in here';
+    $('staleWho').textContent = who
+      ? 'This device is signed in as ' + who + ', but the server does not recognise it right now.'
+      : 'The server does not recognise this device right now.';
+    $('staleWhy').textContent = 'Checking what the server is doing.';
+    lead('retry');
   }
 
   function paintCodes() {
@@ -455,6 +497,24 @@
     schedule(0);
   }
 
+  /* Why the session was refused decides what to offer. If the server answers
+     and its store is healthy, the account really is gone and no amount of
+     trying again will bring it back; if it cannot be reached at all, trying
+     again is exactly the right thing. Guessing wrong leaves someone pressing
+     a button that cannot work. */
+  function probeServer() {
+    fetch('/api/healthz', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (h) {
+        state.staleReason = (h && h.store === 'missing') ? 'store' : 'gone';
+        paint();
+      })
+      .catch(function () {
+        state.staleReason = 'unreachable';
+        paint();
+      });
+  }
+
   function tick() {
     if (polling || !state.token) return;
     polling = true;
@@ -493,6 +553,9 @@
       missed++;
 
       if (err && (err.status === 401 || err.code === 'store-missing')) {
+        /* A 401 alone does not say whether waiting would help. Ask the server
+           what shape it is in before telling anyone to try again. */
+        if (err.code !== 'store-missing') probeServer();
         /* Either the server has forgotten this session or it has nowhere to
            remember anything. Keep the session and say which. */
         state.stale = true;
@@ -914,7 +977,7 @@
          restarted or lost its data, and silently wiping the session on a
          server hiccup is exactly the surprise logout this avoids. Only the
          user signs themselves out. */
-      if (e && e.status === 401) { state.stale = true; paint(); }
+      if (e && e.status === 401) { state.stale = true; probeServer(); paint(); }
     });
   }
 
@@ -1014,13 +1077,19 @@
   $('staleRetry').onclick = function () {
     toast('Checking');
     refresh().then(function () {
-      if (state.stale) toast('The server still does not recognise this device');
-      else connect();
+      if (!state.stale) { connect(); return; }
+      /* say what it is rather than repeating that it did not work */
+      probeServer();
+      toast(state.staleReason === 'unreachable'
+        ? 'Still cannot reach the server'
+        : 'That account is no longer on the server');
     });
   };
 
   $('staleFresh').onclick = function () {
-    if (!confirm('Start over? This device gets a new code, and your current connection is lost.')) return;
+    /* when the account is already gone there is nothing left to warn about */
+    if (state.staleReason !== 'gone' &&
+        !confirm('Start over? This device gets a new code, and your current connection is lost.')) return;
     del(K.token); del(K.seen); del(K.outbox); del(K.name);
     cookieDel('aemerg_token'); cookieDel('aemerg_name');
     location.reload();
