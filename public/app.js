@@ -5,6 +5,20 @@
 
   var K = { token: 'my.token', photos: 'my.photos', seen: 'my.seen', outbox: 'my.outbox' };
 
+  var KINDS = [
+    { k: 'missyou',  ic: '\uD83D\uDC99', label: 'Miss You',   said: 'Misses you',           out: 'You missed',        inn: 'missed you',      hue: ['#7E9BC4', '#EAF1FA', '#C97B6E'] },
+    { k: 'hug',      ic: '\uD83E\uDD17', label: 'Hug',        said: 'Sent you a hug',       out: 'You hugged',        inn: 'sent you a hug',  hue: ['#E4A950', '#FFE6BB', '#C97B6E'] },
+    { k: 'thinking', ic: '\u2615',        label: 'Thinking',   said: 'Is thinking of you',   out: 'You thought of',    inn: 'thought of you',  hue: ['#C9A227', '#F7F0E4', '#B98C5A'] },
+    { k: 'laugh',    ic: '\uD83D\uDE02', label: 'Laughing',   said: 'Is laughing with you', out: 'You laughed with',  inn: 'laughed with you', hue: ['#E4A950', '#F7F0E4', '#8FB98A'] },
+    { k: 'proud',    ic: '\u2B50',        label: 'Proud',      said: 'Is proud of you',      out: 'You cheered',       inn: 'is proud of you', hue: ['#E4C64F', '#FFF3D0', '#E4A950'] },
+    { k: 'night',    ic: '\uD83C\uDF19', label: 'Good Night', said: 'Says good night',      out: 'You said night to', inn: 'said good night', hue: ['#7E9BC4', '#C9BCE0', '#F7F0E4'] }
+  ];
+
+  function kindOf(k) {
+    for (var i = 0; i < KINDS.length; i++) if (KINDS[i].k === k) return KINDS[i];
+    return KINDS[0];
+  }
+
   var state = {
     token: null,
     user: null,
@@ -15,7 +29,7 @@
   };
 
   var ws = null, retry = 0, retryTimer = null;
-  var popQueue = [], popShowing = false;
+  var popQueue = [], popShowing = false, popKind = 'missyou';
 
   function get(k, fb) { try { var v = localStorage.getItem(k); return v === null ? fb : v; } catch (e) { return fb; } }
   function put(k, v)  { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
@@ -126,15 +140,40 @@
     $('setCode').textContent = code;
   }
 
+  function buildSendButtons() {
+    var wrap = $('sendMore');
+    wrap.innerHTML = '';
+    KINDS.slice(1).forEach(function (kind) {
+      var b = document.createElement('button');
+      b.className = 'send';
+      b.type = 'button';
+      b.setAttribute('data-kind', kind.k);
+      var ic = document.createElement('span');
+      ic.className = 'ic';
+      ic.textContent = kind.ic;
+      var tx = document.createElement('span');
+      tx.className = 'tx';
+      tx.textContent = kind.label;
+      b.appendChild(ic);
+      b.appendChild(tx);
+      b.onclick = function () { sendMiss(kind.k); };
+      wrap.appendChild(b);
+    });
+  }
+
+  function sendButtons() {
+    return [].slice.call(document.querySelectorAll('.send'));
+  }
+
   function setPresence(online) {
     if (state.friend) state.friend.online = online;
     $('status').classList.toggle('up', !!online);
     $('statusText').textContent = online ? 'Online now' : 'Offline';
     $('setFriendState').textContent = online ? 'Online' : 'Offline';
     if (online) { state.awayCount = 0; $('setQueued').textContent = '0'; }
-    $('miss').disabled = !state.friend;
+    sendButtons().forEach(function (b) { b.disabled = !state.friend; });
     $('missNote').textContent = state.friend
-      ? (online ? '' : 'They are away. This will be waiting when they open the app.')
+      ? (online ? '' : 'They are away. Anything you send waits until they open the app.')
       : '';
   }
 
@@ -151,7 +190,8 @@
       arrow.textContent = a.dir === 'in' ? '←' : '→';
       var who = document.createElement('span');
       who.className = 'who';
-      who.textContent = a.dir === 'in' ? a.name + ' missed you' : 'You missed ' + a.name;
+      var kind = kindOf(a.kind);
+      who.textContent = kind.ic + '  ' + (a.dir === 'in' ? a.name + ' ' + kind.inn : kind.out + ' ' + a.name);
       var when = document.createElement('span');
       when.className = 'when';
       when.textContent = shortAgo(a.at);
@@ -247,7 +287,7 @@
       if (m.t === 'error')    { toast(m.text); return; }
 
       if (m.t === 'sent') {
-        addActivity({ id: m.id, dir: 'out', name: state.friend ? state.friend.name : 'your friend', at: m.at });
+        addActivity({ id: m.id, kind: m.kind, dir: 'out', name: state.friend ? state.friend.name : 'your friend', at: m.at });
         if (m.delivered) {
           toast('Delivered');
         } else {
@@ -262,7 +302,7 @@
 
         try { ws.send(JSON.stringify({ t: 'ack', id: m.id })); } catch (e) {}
         if (!markSeen(m.id)) return;
-        addActivity({ id: m.id, dir: 'in', name: m.fromName, at: m.at });
+        addActivity({ id: m.id, kind: m.kind, dir: 'in', name: m.fromName, at: m.at });
         popQueue.push(m);
         nextPopup();
       }
@@ -271,7 +311,7 @@
     ws.onclose = function () {
       state.live = false;
       linkChip('Offline', false);
-      $('miss').disabled = false;
+      sendButtons().forEach(function (b) { b.disabled = !state.friend; });
       retry = Math.min(retry + 1, 6);
       retryTimer = setTimeout(connect, [800, 1500, 2500, 4000, 7000, 11000, 15000][retry]);
     };
@@ -284,22 +324,26 @@
     var pending = outbox.slice();
     outbox = [];
     put(K.outbox, '[]');
-    pending.forEach(function () { ws.send(JSON.stringify({ t: 'missyou' })); });
+    pending.forEach(function (o) {
+      ws.send(JSON.stringify({ t: 'missyou', kind: (o && o.kind) || 'missyou' }));
+    });
     if (pending.length) toast('Sent ' + pending.length + ' saved ' + (pending.length === 1 ? 'press' : 'presses'));
   }
 
-  function sendMiss() {
+  function sendMiss(k) {
+    var kind = kindOf(k);
     if (!state.friend) { toast('Connect with a friend first.'); return; }
     if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ t: 'missyou' }));
+      ws.send(JSON.stringify({ t: 'missyou', kind: kind.k }));
     } else {
-      outbox.push(Date.now());
+      outbox.push({ at: Date.now(), kind: kind.k });
       put(K.outbox, JSON.stringify(outbox));
       toast('You are offline. It will send when you reconnect');
       connect();
     }
-    var r = $('miss').getBoundingClientRect();
-    Collage.burst(r.left + r.width / 2, r.top + r.height / 2, 26, 1.1, ['#7E9BC4', '#EAF1FA', '#C97B6E']);
+    var btn = document.querySelector('.send[data-kind="' + kind.k + '"]') || $('miss');
+    var r = btn.getBoundingClientRect();
+    Collage.burst(r.left + r.width / 2, r.top + r.height / 2, 26, 1.1, kind.hue);
   }
 
   function nextPopup() {
@@ -307,6 +351,10 @@
     var m = popQueue.shift();
     popShowing = true;
 
+    var kind = kindOf(m.kind);
+    popKind = kind.k;
+    $('popIcon').textContent = kind.ic;
+    $('popSaid').textContent = kind.said;
     $('popWho').textContent = m.fromName;
     $('popWhen').textContent = ago(m.at);
     $('popQueued').hidden = (Date.now() - m.at) < 15000;
@@ -314,10 +362,12 @@
     $('popClose').focus();
 
     if (!Collage.reduced) {
-      setTimeout(function () { Collage.celebrate($('popWho'), ['#7E9BC4', '#EAF1FA', '#C97B6E']); }, 160);
+      setTimeout(function () { Collage.celebrate($('popWho'), kind.hue); }, 160);
     }
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      try { new Notification(m.fromName + ' misses you', { body: 'Open Miss You to send one back.' }); } catch (e) {}
+      try {
+        new Notification(m.fromName + ' ' + kind.inn, { body: 'Open Miss You to send one back.' });
+      } catch (e) {}
     }
   }
 
@@ -520,10 +570,11 @@
   $('copyCode').onclick = copyCode;
   $('setCopy').onclick = copyCode;
 
-  $('miss').onclick = sendMiss;
+  $('miss').onclick = function () { sendMiss('missyou'); };
+  buildSendButtons();
 
   $('popClose').onclick = closePopup;
-  $('popBack').onclick = function () { closePopup(); sendMiss(); };
+  $('popBack').onclick = function () { var k = popKind; closePopup(); sendMiss(k); };
 
   $('openSettings').onclick = openSettings;
   $('closeSettings').onclick = closeSettings;

@@ -201,30 +201,56 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 #status.up{color:var(--online)}
 #status.up .dot{background:var(--online);box-shadow:0 0 12px rgba(143,185,138,.9)}
 
-#miss{
-  margin-top:2em;
+#sendRow{
+  margin-top:1.9em;
+  display:flex;justify-content:center;
+}
+#sendMore{
+  margin-top:14px;
+  display:flex;flex-wrap:wrap;justify-content:center;
+  gap:9px;
+}
+
+.send{
   font-family:var(--util);
-  font-size:13px;font-weight:400;letter-spacing:.26em;text-transform:uppercase;
+  font-weight:400;letter-spacing:.2em;text-transform:uppercase;
+  cursor:pointer;
+  display:inline-flex;align-items:center;gap:10px;
+  border-radius:999px;
+  color:var(--ivory);
+  background:rgba(247,240,228,.05);
+  border:1px solid var(--line);
+  font-size:10.5px;
+  padding:11px 20px;
+  transition:transform .18s cubic-bezier(.2,.9,.3,1.3), box-shadow .3s ease, background .3s ease, border-color .3s ease;
+}
+.send .ic{font-size:15px;line-height:1}
+.send:hover{
+  transform:translateY(-2px);
+  background:rgba(247,240,228,.1);
+  border-color:rgba(247,240,228,.3);
+}
+.send:active{transform:translateY(0) scale(.96)}
+.send:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.send:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+
+.send.big{
+  font-size:13px;letter-spacing:.26em;
   color:#EAF1FA;
   background:linear-gradient(180deg, rgba(126,155,196,.3), rgba(126,155,196,.14));
-  border:1px solid rgba(126,155,196,.5);
-  border-radius:999px;
+  border-color:rgba(126,155,196,.5);
   padding:19px 46px;
-  cursor:pointer;
-  display:inline-flex;align-items:center;gap:12px;
-  box-shadow:0 0 0 0 rgba(126,155,196,.42), 0 16px 40px rgba(0,0,0,.45);
-  transition:transform .18s cubic-bezier(.2,.9,.3,1.3), box-shadow .3s ease, background .3s ease;
+  box-shadow:0 16px 40px rgba(0,0,0,.45);
 }
-#miss .heart{font-size:19px;line-height:1}
-#miss:hover{
+.send.big .ic{font-size:19px}
+.send.big:hover{
   transform:translateY(-2px) scale(1.03);
   background:linear-gradient(180deg, rgba(126,155,196,.42), rgba(126,155,196,.2));
+  border-color:rgba(126,155,196,.7);
   box-shadow:0 0 46px rgba(126,155,196,.32), 0 20px 46px rgba(0,0,0,.5);
 }
-#miss:active{transform:translateY(0) scale(.97)}
-#miss:disabled{opacity:.45;cursor:not-allowed;transform:none}
-#miss:focus-visible{outline:2px solid var(--blue);outline-offset:4px}
-#missNote{margin-top:1.1em;font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);min-height:1.2em}
+.send.big:focus-visible{outline-color:var(--blue)}
+
 
 #activity{
   position:fixed;left:clamp(14px,2.6vw,34px);bottom:clamp(14px,2.4vw,30px);

@@ -56,14 +56,19 @@
     <div id="status"><span class="dot"></span><span id="statusText">Offline</span></div>
     <h1 id="friendName">-</h1>
     <p id="dateline"><span class="rule"></span><span id="dateText">11 September</span><span class="rule"></span></p>
-    <button id="miss" type="button"><span class="heart">&#128153;</span><span>Miss You</span></button>
+    <div id="sendRow">
+      <button class="send big" id="miss" type="button" data-kind="missyou">
+        <span class="ic">&#128153;</span><span class="tx">Miss You</span>
+      </button>
+    </div>
+    <div id="sendMore"></div>
     <p id="missNote"></p>
   </section>
 
 </main>
 
 <aside id="activity">
-  <h3>Recent Miss You</h3>
+  <h3>Recent notes</h3>
   <ul id="activityList"></ul>
   <p class="none" id="activityNone">Nothing yet. Press the button and your friend will know.</p>
 </aside>
@@ -130,13 +135,13 @@
 
 <div id="popup" role="alertdialog" aria-modal="true" aria-label="Miss you">
   <div class="inner">
-    <div class="heart">&#128153;</div>
-    <div class="said">Misses you</div>
+    <div class="heart" id="popIcon">&#128153;</div>
+    <div class="said" id="popSaid">Misses you</div>
     <div class="who" id="popWho">-</div>
     <div class="when" id="popWhen">-</div>
     <div class="queued" id="popQueued" hidden>Sent while you were offline</div>
     <div class="row">
-      <button class="btn solid" id="popBack" type="button">Miss them back</button>
+      <button class="btn solid" id="popBack" type="button">Send one back</button>
       <button class="btn ghost" id="popClose" type="button">Close</button>
     </div>
   </div>

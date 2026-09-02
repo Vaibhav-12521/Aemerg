@@ -26,9 +26,14 @@ Open it directly in a browser. Nothing to install.
 
 ## Miss You - the friendship app
 
-Two friends link with a six-digit code. Either one presses **💙 Miss You** and
-the other gets a popup. If they are offline, it waits on the server and arrives
-the moment they open the app.
+Two friends link with a six-digit code. Either one presses a button and the
+other gets a popup. If they are offline, it waits on the server and arrives the
+moment they open the app.
+
+Six things you can send: **Miss You**, **Hug**, **Thinking**, **Laughing**,
+**Proud**, **Good Night**. Each carries its own icon, wording and spark colour
+through the popup, the activity list and the desktop notification. Miss You is
+the large button; the rest sit under it.
 
 Everything runs over the internet - HTTP for the API, a WebSocket for live
 delivery. There is no SMS, SIM, phone-call or cellular code anywhere in it.

@@ -40,6 +40,8 @@ function freshCode() {
   throw new Error('code space exhausted');
 }
 
+const KINDS = new Set(['missyou', 'hug', 'thinking', 'laugh', 'proud', 'night']);
+
 function userByToken(token) {
   if (!token) return null;
   return Object.keys(db.users).find((k) => db.users[k].token === token) || null;
@@ -257,12 +259,13 @@ wss.on('connection', (ws, req) => {
         ws.send(JSON.stringify({ t: 'error', text: 'Connect with a friend first.' }));
         return;
       }
-      const evt = { id: id(), fromId: uid, fromName: me.name, at: now() };
+      const kind = KINDS.has(m.kind) ? m.kind : 'missyou';
+      const evt = { id: id(), kind, fromId: uid, fromName: me.name, at: now() };
       queue(me.friendId, evt);
       const delivered = sendTo(me.friendId, Object.assign({ t: 'missyou' }, evt));
-      logActivity(uid,         { id: evt.id, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
-      logActivity(me.friendId, { id: evt.id, dir: 'in',  name: me.name,                    at: evt.at });
-      ws.send(JSON.stringify({ t: 'sent', id: evt.id, at: evt.at, delivered }));
+      logActivity(uid,         { id: evt.id, kind, dir: 'out', name: db.users[me.friendId].name, at: evt.at });
+      logActivity(me.friendId, { id: evt.id, kind, dir: 'in',  name: me.name,                    at: evt.at });
+      ws.send(JSON.stringify({ t: 'sent', id: evt.id, kind, at: evt.at, delivered }));
     }
   });
 
