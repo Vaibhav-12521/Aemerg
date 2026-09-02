@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Aemerg</title>
 <meta name="description" content="Tell one friend you are thinking of them. Nothing arrives late, nothing gets lost.">
 <meta name="theme-color" content="#17100C">
@@ -30,7 +30,7 @@
 </div>
 
 <header id="top">
-  <div id="mark">Aemerg</div>
+  <div id="mark"><img src="icons/icon-192.png" alt="" width="22" height="22"><span>Aemerg</span></div>
   <div id="topRight">
     <span id="link"><span class="dot"></span><span id="linkText">Connecting</span></span>
     <button class="btn" id="openSettings" type="button" hidden>Settings</button>
@@ -73,15 +73,15 @@
     </div>
     <div id="sendMore"></div>
     <p id="missNote"></p>
+
+    <aside id="activity">
+      <h3>Recent notes</h3>
+      <ul id="activityList"></ul>
+      <p class="none" id="activityNone">Nothing yet. Press a button and your friend will know.</p>
+    </aside>
   </section>
 
 </main>
-
-<aside id="activity">
-  <h3>Recent notes</h3>
-  <ul id="activityList"></ul>
-  <p class="none" id="activityNone">Nothing yet. Press the button and your friend will know.</p>
-</aside>
 
 <div id="requests"></div>
 

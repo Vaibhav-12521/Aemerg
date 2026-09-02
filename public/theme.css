@@ -13,6 +13,12 @@
   --grain:none;
   --display:"Bodoni Moda","Didot","Bodoni MT",Georgia,serif;
   --util:"Jost","Futura","Century Gothic",system-ui,sans-serif;
+
+  --sa-t:env(safe-area-inset-top,0px);
+  --sa-r:env(safe-area-inset-right,0px);
+  --sa-b:env(safe-area-inset-bottom,0px);
+  --sa-l:env(safe-area-inset-left,0px);
+  --topbar:58px;
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
@@ -23,10 +29,16 @@ body{
   font-family:var(--util);
   overflow:hidden;
   -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  text-size-adjust:100%;
+  -webkit-text-size-adjust:100%;
 }
 
 #stage{
-  position:fixed;inset:0;overflow:hidden;
+  position:fixed;left:0;right:0;top:0;
+  height:100vh;
+  height:100dvh;
+  overflow:hidden;
   background:radial-gradient(120% 95% at 50% 46%, #2E211A 0%, #1D140F 46%, #120C08 100%);
 }
 #plates{position:absolute;inset:0;z-index:2}
@@ -116,15 +128,23 @@ body{
 #top{
   position:fixed;top:0;left:0;right:0;z-index:70;
   display:flex;align-items:center;justify-content:space-between;
-  gap:14px;
-  padding:clamp(14px,2.2vw,26px) clamp(14px,2.6vw,34px);
+  gap:12px;
+  padding:calc(clamp(12px,2.2vw,26px) + var(--sa-t)) calc(clamp(14px,2.6vw,34px) + var(--sa-r)) clamp(12px,2.2vw,26px) calc(clamp(14px,2.6vw,34px) + var(--sa-l));
   pointer-events:none;
+  background:linear-gradient(180deg, rgba(18,12,8,.72) 0%, rgba(18,12,8,.32) 60%, transparent 100%);
 }
 #top > *{pointer-events:auto}
 #mark{
+  display:flex;align-items:center;gap:9px;
   font-family:var(--display);
   font-size:15px;letter-spacing:.06em;
-  color:var(--ivory);opacity:.72;
+  color:var(--ivory);opacity:.82;
+}
+#mark img{
+  width:22px;height:22px;
+  border-radius:6px;
+  display:block;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);
 }
 #topRight{display:flex;align-items:center;gap:10px}
 
@@ -139,9 +159,22 @@ body{
 #link .dot{width:6px;height:6px;border-radius:50%;background:var(--offline);transition:background .3s ease}
 #link.up .dot{background:var(--online);box-shadow:0 0 10px rgba(143,185,138,.8)}
 
-main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:70px 20px;pointer-events:none}
+main{
+  position:fixed;left:0;right:0;top:0;
+  height:100vh;
+  height:100dvh;
+  z-index:50;
+  display:flex;align-items:center;justify-content:center;
+  padding:calc(var(--topbar) + var(--sa-t) + 10px) calc(20px + var(--sa-r)) calc(24px + var(--sa-b)) calc(20px + var(--sa-l));
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  pointer-events:none;
+}
+main::-webkit-scrollbar{width:0;height:0}
 
-.screen{display:none;width:min(1000px,92vw);text-align:center;pointer-events:none}
+.screen{display:none;width:min(1000px,92vw);margin:auto;text-align:center;pointer-events:none}
 .screen.on{display:block}
 .screen .card,
 .screen button,
@@ -164,7 +197,9 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
   font-size:clamp(24px,3.4vw,32px);
   line-height:1.1;text-align:center;
 }
-.card p.sub{font-size:12px;line-height:1.7;color:var(--muted);text-align:center}
+/* used inside cards and in the settings groups, so it is not card-scoped */
+.sub{font-size:12px;line-height:1.7;color:var(--muted)}
+.card p.sub{text-align:center}
 .card .row{display:flex;gap:10px}
 .card .row .btn{flex:1;text-align:center}
 
@@ -206,9 +241,12 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
   display:flex;justify-content:center;
 }
 #sendMore{
-  margin-top:14px;
+  margin:14px auto 0;
   display:flex;flex-wrap:wrap;justify-content:center;
   gap:9px;
+  /* narrow enough that five buttons break 3 + 2 rather than 4 + 1,
+     which would leave the last one stranded on its own row */
+  max-width:466px;
 }
 
 .send{
@@ -252,10 +290,26 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 .send.big:focus-visible{outline-color:var(--blue)}
 
 
+#missNote{
+  margin:1.4em auto 0;
+  max-width:32em;
+  font-size:9.5px;
+  font-weight:400;
+  letter-spacing:.24em;
+  text-indent:.24em;
+  text-transform:uppercase;
+  line-height:2;
+  color:var(--muted);
+  min-height:1.2em;
+}
+
 #activity{
-  position:fixed;left:clamp(14px,2.6vw,34px);bottom:clamp(14px,2.4vw,30px);
+  position:fixed;
+  left:calc(clamp(14px,2.6vw,34px) + var(--sa-l));
+  bottom:calc(clamp(14px,2.4vw,30px) + var(--sa-b));
   z-index:65;
   width:min(280px,72vw);
+  pointer-events:auto;
   background:rgba(23,16,12,.62);
   backdrop-filter:blur(8px);
   border:1px solid var(--line);
@@ -282,7 +336,9 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 #activity .none{font-size:11px;color:var(--muted);line-height:1.6}
 
 #settings{
-  position:fixed;top:0;right:0;bottom:0;z-index:90;
+  position:fixed;top:0;right:0;z-index:90;
+  height:100vh;
+  height:100dvh;
   width:min(420px,100vw);
   background:rgba(20,14,10,.97);
   border-left:1px solid var(--line);
@@ -324,8 +380,11 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 }
 
 #popup{
-  position:fixed;inset:0;z-index:120;
+  position:fixed;left:0;right:0;top:0;z-index:120;
+  height:100vh;
+  height:100dvh;
   display:none;place-items:center;
+  overflow-y:auto;
   background:rgba(12,8,5,.86);
   backdrop-filter:blur(6px);
   padding:24px;
@@ -392,7 +451,9 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 #toast.on{opacity:1}
 
 #box{
-  position:fixed;inset:0;z-index:110;
+  position:fixed;left:0;right:0;top:0;z-index:110;
+  height:100vh;
+  height:100dvh;
   display:none;align-items:center;justify-content:center;flex-direction:column;gap:22px;
   padding:clamp(20px,5vw,60px);
   background:rgba(12,8,5,.94);
@@ -401,14 +462,134 @@ main{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:7
 #box img{max-width:100%;max-height:72vh;object-fit:contain;box-shadow:0 30px 90px rgba(0,0,0,.7)}
 #box .row{display:flex;gap:12px}
 
-@media (max-width:720px){
-  #activity{
-    left:50%;transform:translateX(-50%);
-    width:min(340px,90vw);
-    bottom:12px;
+/* ---------- phones and small tablets ---------- */
+
+@media (max-width:760px){
+  :root{--topbar:52px}
+
+  /* a pointer-events:none box cannot be scrolled by touch, so on phones the
+     content column takes the gesture and main scrolls beneath it */
+  .screen.on{pointer-events:auto}
+
+  main{
+    align-items:flex-start;
+    padding-left:calc(14px + var(--sa-l));
+    padding-right:calc(14px + var(--sa-r));
+    padding-bottom:calc(28px + var(--sa-b));
   }
-  main{padding:64px 16px 190px}
-  #settings{width:100vw}
+  .screen{width:100%}
+
+  #mark{font-size:14px}
+  #link{padding:6px 11px;letter-spacing:.18em}
+  #openSettings{padding:8px 14px}
+
+  #status{margin-bottom:1.1em}
+  #friendName{font-size:clamp(2.3rem,13vw,4.4rem);line-height:1}
+  #dateline{margin-top:.9em;letter-spacing:.24em;text-indent:.24em}
+  #dateline .rule{width:clamp(16px,7vw,44px)}
+
+  #sendRow{margin-top:1.5em}
+  .send.big{
+    width:100%;max-width:340px;
+    justify-content:center;
+    padding:18px 24px;
+    font-size:12.5px;letter-spacing:.22em;
+  }
+
+  /* two even columns beat a ragged wrap */
+  #sendMore{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    max-width:340px;
+  }
+  /* five buttons in two columns leaves an orphan: give it the full row */
+  #sendMore .send:last-child:nth-child(odd){grid-column:1 / -1}
+  .send{
+    justify-content:center;
+    padding:13px 10px;
+    font-size:10px;letter-spacing:.14em;
+    gap:7px;
+    min-height:44px;
+  }
+  .send .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  #missNote{margin-top:1.2em;font-size:9px;letter-spacing:.14em;text-indent:.14em;line-height:1.9}
+
+  /* the rail joins the flow so it can never sit on top of the buttons */
+  #activity{
+    position:static;
+    width:100%;max-width:340px;
+    margin:26px auto 0;
+    bottom:auto;left:auto;
+  }
+
+  .card{width:100%;padding:24px 20px;gap:16px}
+  .card h2{font-size:22px}
+
+  #settings{width:100%}
+  #settings header{padding:calc(16px + var(--sa-t)) 18px 16px}
+  #settings .body{
+    padding:8px 18px calc(30px + var(--sa-b));
+    -webkit-overflow-scrolling:touch;
+  }
+  .pair{flex-wrap:wrap;gap:4px 12px}
+  .pair dd{text-align:left}
+
+  #popup{padding:calc(20px + var(--sa-t)) 18px calc(20px + var(--sa-b))}
+  #popup .heart{font-size:clamp(58px,22vw,96px)}
+  #popup .who{font-size:clamp(26px,9vw,44px)}
+  #popup .row{width:100%;max-width:320px}
+  #popup .row .btn{flex:1;text-align:center;padding:13px 14px}
+
+  #toast{
+    bottom:calc(16px + var(--sa-b));
+    width:calc(100% - 32px);max-width:360px;
+    letter-spacing:.12em;
+  }
+
+  #box{padding:calc(18px + var(--sa-t)) 16px calc(18px + var(--sa-b))}
+  #box img{max-height:60vh}
+
+  #requests{
+    top:calc(var(--topbar) + var(--sa-t) + 8px);
+    width:calc(100% - 28px);
+  }
+  .request{flex-wrap:wrap;gap:10px}
+  .request .txt{flex:1 0 100%}
+  .request .btn{flex:1}
+}
+
+/* ---------- narrow phones ---------- */
+
+@media (max-width:400px){
+  #linkText{display:none}
+  #link{padding:7px;gap:0}
+  #friendName{font-size:clamp(2rem,14vw,3.4rem)}
+  .send{font-size:9.5px;letter-spacing:.1em;padding:12px 8px}
+  .send .ic{font-size:14px}
+  #dateline{font-size:9px}
+}
+
+/* ---------- short viewports: landscape phones ---------- */
+
+@media (max-height:560px) and (max-width:960px){
+  main{align-items:flex-start}
+  #status{margin-bottom:.7em}
+  #friendName{font-size:clamp(1.9rem,7vh,3rem)}
+  #dateline{margin-top:.6em}
+  #sendRow{margin-top:1em}
+  .send.big{padding:13px 24px}
+  #activity{margin-top:18px}
+}
+
+/* ---------- coarse pointers: no hover lift, bigger targets ---------- */
+
+@media (hover:none){
+  .send:hover{transform:none}
+  .send.big:hover{transform:none}
+  .btn{padding:11px 17px}
+  #bar{opacity:1}
 }
 
 @media (prefers-reduced-motion:reduce){
