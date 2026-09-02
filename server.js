@@ -10,25 +10,48 @@ const webpush = require('web-push');
 
 const PORT = process.env.PORT || 8787;
 
-/* Where the store lives. On a host with a mounted disk, point DATA_DIR at the
-   mount (Render: /var/data) so accounts outlive a deploy. Left unset it sits
-   beside server.js, which is right for running it locally. */
+/* Where everything is kept. It is one JSON document either way.
+
+   With REDIS_URL set it lives in a hosted key-value store, which is what lets
+   this run on a free host that has no disk of its own. Without it, it is a
+   file beside server.js, which is right for running locally. */
+
+const REDIS_URL   = (process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_REST_URL || '').replace(/\/+$/, '');
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_REST_TOKEN || '';
+const REDIS_KEY   = process.env.STORE_KEY || 'aemerg:db';
+const useRedis    = !!(REDIS_URL && REDIS_TOKEN);
+
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 const STORE = path.join(DATA_DIR, 'data.json');
 
-try {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-} catch (err) {
-  console.error('cannot use DATA_DIR ' + DATA_DIR + ':', err.message);
+if (!useRedis) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (err) {
+    console.error('cannot use DATA_DIR ' + DATA_DIR + ':', err.message);
+  }
 }
 
 const blank = { users: {}, codes: {}, requests: {}, pending: {}, activity: {}, subs: {} };
 let db = blank;
 
-try {
-  if (fs.existsSync(STORE)) db = Object.assign({}, blank, JSON.parse(fs.readFileSync(STORE, 'utf8')));
-} catch (err) {
-  console.error('data.json unreadable, starting fresh:', err.message);
+function redis(pathPart, opts) {
+  return fetch(REDIS_URL + pathPart, Object.assign({
+    headers: { Authorization: 'Bearer ' + REDIS_TOKEN }
+  }, opts || {})).then((r) => {
+    if (!r.ok) throw new Error('store responded ' + r.status);
+    return r.json();
+  });
+}
+
+async function loadDb() {
+  if (useRedis) {
+    const out = await redis('/get/' + encodeURIComponent(REDIS_KEY));
+    if (out && typeof out.result === 'string' && out.result) return JSON.parse(out.result);
+    return null;
+  }
+  if (fs.existsSync(STORE)) return JSON.parse(fs.readFileSync(STORE, 'utf8'));
+  return null;
 }
 
 /* Writes go to a temp file and are renamed over the real one, so a crash
@@ -63,12 +86,8 @@ function renameWithRetry(from, to) {
   throw last;
 }
 
-function writeNow() {
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  dirty = false;
+function writeFile(json) {
   const tmp = STORE + '.tmp';
-  const json = JSON.stringify(db, null, 2);
   try {
     fs.writeFileSync(tmp, json);
     renameWithRetry(tmp, STORE);
@@ -80,16 +99,39 @@ function writeNow() {
       try { fs.unlinkSync(tmp); } catch (e) {}
     } catch (err2) {
       dirty = true;
-      console.error('could not write data.json:', err2.message);
+      console.error('could not write the store:', err2.message);
     }
   }
 }
 
+/* Returns a promise so a caller that must not answer before the write has
+   landed can wait for it. Registration is the one that really must. */
+function writeNow() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  dirty = false;
+  const json = JSON.stringify(db, null, 2);
+
+  if (!useRedis) { writeFile(json); return Promise.resolve(); }
+
+  return redis('/set/' + encodeURIComponent(REDIS_KEY), {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + REDIS_TOKEN, 'Content-Type': 'text/plain' },
+    body: json
+  }).catch((err) => {
+    dirty = true;
+    console.error('could not write the store:', err.message);
+  });
+}
+
 function save(immediate) {
-  if (immediate) { writeNow(); return; }
+  /* A hosted store cannot be flushed from an exit handler, so nothing is left
+     sitting in a timer: every write goes out as it happens. */
+  if (immediate || useRedis) return writeNow();
   dirty = true;
-  if (saveTimer) return;
+  if (saveTimer) return Promise.resolve();
   saveTimer = setTimeout(writeNow, 150);
+  return Promise.resolve();
 }
 
 /* never lose the last few writes when the process goes down */
@@ -295,6 +337,7 @@ app.use(express.json({ limit: '32kb' }));
 app.get('/healthz', (req, res) => {
   res.json({
     ok: true,
+    store: useRedis ? 'hosted' : 'file',
     push: !!vapid,
     users: Object.keys(db.users).length,
     online: sockets.size,
@@ -312,14 +355,15 @@ function auth(req, res, next) {
   next();
 }
 
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 40);
   if (!name) return res.status(400).json({ error: 'Enter a name so your friend knows who you are.' });
   const uid  = id();
   const code = freshCode();
   db.users[uid] = { id: uid, name, code, token: id() + id(), friendId: null, createdAt: now() };
   db.codes[code] = uid;
-  save(true);
+  /* the token is only worth handing out once the account behind it is saved */
+  await save(true);
   res.json({ token: db.users[uid].token, user: publicUser(uid) });
 });
 
@@ -509,7 +553,19 @@ setInterval(() => {
   }
 }, 25000).unref();
 
-server.listen(PORT, () => {
-  console.log('Aemerg is running on port ' + PORT);
-  console.log('  store: ' + STORE);
-});
+/* Load before listening: answering requests against an empty store would
+   sign everyone out for as long as it took to read. */
+(async () => {
+  try {
+    const loaded = await loadDb();
+    if (loaded) db = Object.assign({}, blank, loaded);
+  } catch (err) {
+    console.error('could not read the store, starting fresh:', err.message);
+  }
+
+  server.listen(PORT, () => {
+    console.log('Aemerg is running on port ' + PORT);
+    console.log('  store: ' + (useRedis ? 'hosted key-value, key ' + REDIS_KEY : STORE));
+    console.log('  users: ' + Object.keys(db.users).length);
+  });
+})();

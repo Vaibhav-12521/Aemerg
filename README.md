@@ -91,79 +91,74 @@ does not, and Settings will say *Unavailable here*. Put it behind HTTPS - a
 tunnel such as `cloudflared tunnel --url http://localhost:8787` is the quickest
 way - and location works everywhere.
 
-### Deploying to Render
+### Deploying free
 
-Aemerg needs a real Node process, a WebSocket, and somewhere to keep
-`data.json`. Render gives all three. `render.yaml` in this repo describes the
-service, so Render can set it up from the file rather than a form.
+Nothing here costs anything. The two accounts you need take a minute each and
+neither asks for a card.
 
-**1. Get your push keys ready.** If you have not made a pair:
+The one thing a free host will not give you is a disk, so the store goes to a
+hosted key-value service instead of a file. Set `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` and the server uses it; leave them unset and it
+uses `data.json` beside `server.js`, which is what you want locally.
+
+**1. Somewhere to keep the data.** Sign up at upstash.com with GitHub, create a
+Redis database, and open its **REST API** section. Copy the two values:
 
 ```
-npm run keys
+UPSTASH_REDIS_REST_URL     https://xxxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN   AY...
 ```
 
-Open `vapid.json`. You will paste the three values into Render in step 3.
+The free tier allows 10,000 commands a day. A whole session of two friends
+sending notes back and forth costs single digits, so you will not come close.
 
-**2. Create the service.**
+**2. Push keys.** Open `vapid.json`, or run `npm run keys` if you have not made
+a pair yet. You want all three values.
 
-* Push this repo to GitHub, then on Render choose **New > Blueprint** and point
-  it at the repo. Render reads `render.yaml` and offers the service.
-* Or **New > Web Service**: build `npm ci --omit=dev`, start `node server.js`,
-  health check path `/healthz`.
+**3. The service.** On render.com sign in with GitHub, then **New > Blueprint**
+and point it at this repo. `render.yaml` asks for the free plan and no disk, so
+Render will not ask you for payment. Fill in the five values when prompted:
 
-**3. Set the environment variables** when Render prompts:
-
-| Key | Value |
+| Key | Where it comes from |
 | --- | --- |
-| `VAPID_SUBJECT` | `mailto:you@yourdomain.com` |
-| `VAPID_PUBLIC_KEY` | from `vapid.json` |
-| `VAPID_PRIVATE_KEY` | from `vapid.json` |
-| `DATA_DIR` | `/var/data` (already in the blueprint) |
+| `UPSTASH_REDIS_REST_URL` | Upstash, REST API section |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash, REST API section |
+| `VAPID_SUBJECT` | `mailto:` your address |
+| `VAPID_PUBLIC_KEY` | `vapid.json` |
+| `VAPID_PRIVATE_KEY` | `vapid.json` |
 
 `PORT` is set by Render. Do not set it yourself.
 
-**4. Check the disk is attached.** Mount path `/var/data`, 1 GB is plenty.
-This is the part that matters: it is what makes accounts, friendships and
-queued notes outlive a deploy.
-
-**5. Deploy.** The log should read:
+**4. Check the logs.**
 
 ```
 push notifications are on
 Aemerg is running on port 10000
-  store: /var/data/data.json
+  store: hosted key-value, key aemerg:db
+  users: 0
 ```
 
-Open `https://your-app.onrender.com/healthz` and you should get
-`{"ok":true,"push":true,...}`.
+That third line is the one that matters. If it names a file path instead, the
+Upstash variables did not arrive and accounts will vanish on the next restart.
+`/healthz` should answer `{"ok":true,"store":"hosted",...}`.
 
-#### Do not use the free instance
+#### What the free plan costs you
 
-A free Render instance has **no disk**, so `data.json` is gone on every deploy
-and restart: every account disappears and everyone lands on the *Still signed
-in here* screen. It also sleeps after 15 minutes idle, which drops the
-WebSocket. The blueprint asks for `starter` for exactly these reasons.
+The service sleeps after 15 minutes with nobody using it, and waking takes
+about a minute. That is the whole price, and it is smaller than it sounds:
 
-#### What you get once it is live
+* **Nothing is lost while it sleeps.** Notes queue in the store.
+* **A note still reaches a sleeping friend.** Sending wakes the server, and the
+  server pushes to their phone, so it buzzes with the app closed.
+* **The slow wait is only the first open of a quiet day.** After that it is warm.
 
-HTTPS is automatic, which is what the rest of the app has been waiting for:
+What does suffer is the online dot. While the server sleeps every socket is
+gone, so your friend reads as offline whether or not they are around.
 
-* **Location** works in Settings on a phone, not just on localhost.
-* **Install** is offered on Android and iOS.
-* **Push** reaches a closed app, which needs https to work at all.
-
-#### Keep the same keys
-
-The VAPID keys are the server's push identity. If you change them, every
-subscription already made stops working and nobody gets a notification until
-they open the app again. Set them once in Render and leave them.
-
-#### One instance only
-
-Presence and the socket map live in process memory, so scale this to exactly
-one instance. Two instances behind a load balancer would not see each other's
-users. That is fine for a handful of people and a wall for anything larger.
+If that ever grates, Render's paid Starter plan with a disk removes the
+sleeping and the Upstash dependency both. Nothing in the code needs to change:
+drop the Upstash variables, set `DATA_DIR` to the mount, and it goes back to
+using a file.
 
 ### Notifications when the app is closed
 
@@ -279,5 +274,5 @@ public/icons/                generated by tools/make-icons.js
 tools/make-icons.js          redraws the icon set from the palette
 tools/vapid-keys.js          generates vapid.json for push, once
 vapid.json                   push identity, generated and not committed
-render.yaml                  the Render service, disk and env vars
+render.yaml                  the free Render service and its env vars
 ```

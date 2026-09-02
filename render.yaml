@@ -1,19 +1,23 @@
-# Render Blueprint for Aemerg.
+# Render Blueprint for Aemerg, on the free plan.
 #
-# The plan is deliberately "starter", not "free". A free instance has no disk,
-# so data.json would be gone on every deploy and restart and everyone would be
-# signed out; it also sleeps after 15 minutes idle, which drops the WebSocket.
-# The disk below is what makes accounts and queued notes survive.
+# There is no disk here on purpose. Disks are a paid feature, and asking for
+# one is what makes Render ask for a card. Instead the store lives in a hosted
+# key-value service (Upstash has a free tier that needs no card), which is what
+# lets accounts and queued notes survive a restart on a free instance.
 #
-# The three VAPID values are marked sync:false, so Render will prompt for them
-# rather than storing them here. Get them from vapid.json, or from
-# `npm run keys` if you have not generated a pair yet.
+# The env vars below are marked sync:false, so Render prompts for them rather
+# than keeping them in this file. See the README for where each one comes from.
+#
+# What the free plan costs you: the service sleeps after 15 minutes idle, so
+# the first visit after a quiet spell takes about a minute to wake. Nothing is
+# lost while it sleeps. Notes queue, and a note sent to a sleeping friend still
+# reaches their phone, because the sender's own request wakes the server first.
 
 services:
   - type: web
     name: aemerg
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     branch: main
     buildCommand: npm ci --omit=dev
@@ -24,16 +28,17 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: DATA_DIR
-        value: /var/data
+
+      # the store. Upstash > your database > REST API
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
+      # push. From vapid.json, or `npm run keys`
       - key: VAPID_SUBJECT
         sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
         sync: false
-
-    disk:
-      name: aemerg-data
-      mountPath: /var/data
-      sizeGB: 1
