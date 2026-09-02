@@ -1,8 +1,8 @@
 /* Aemerg service worker.
 
    Caches the shell so the app opens instantly and still opens with no
-   connection. It never caches /api/ or the WebSocket: presence and delivery
-   must always be live, and a cached answer there would be a lie. */
+   connection. It never caches /api/: presence and delivery must always be
+   live, and a cached answer there would be a lie. */
 
 'use strict';
 
@@ -55,7 +55,6 @@ self.addEventListener('fetch', function (e) {
 
   if (url.origin !== self.location.origin) return;   /* fonts and CDNs: leave alone */
   if (url.pathname.indexOf('/api/') === 0) return;    /* always live */
-  if (url.pathname === '/ws') return;
 
   /* navigations: try the network so a deploy lands, fall back to the shell */
   if (req.mode === 'navigate') {

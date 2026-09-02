@@ -40,8 +40,9 @@ note arrives set in italic Bodoni inside the popup, reads back in the activity
 list, and queues offline exactly like a tapped one. Text is delivered as text
 and rendered with `textContent`, so nothing typed into it can become markup.
 
-Everything runs over the internet - HTTP for the API, a WebSocket for live
-delivery. There is no SMS, SIM, phone-call or cellular code anywhere in it.
+Everything runs over the internet: HTTP for the API and for delivery, and
+Web Push to reach a closed app. There is no SMS, SIM, phone-call or cellular
+code anywhere in it.
 
 ### Run it
 

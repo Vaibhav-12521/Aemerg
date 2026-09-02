@@ -205,13 +205,6 @@
     }
   }
 
-  function shortAgo(ts) {
-    var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    if (s < 60) return 'now';
-    if (s < 3600) return Math.round(s / 60) + 'm';
-    if (s < 86400) return Math.round(s / 3600) + 'h';
-    return Math.round(s / 86400) + 'd';
-  }
 
   function updateDate() {
     var now = new Date();
