@@ -366,7 +366,7 @@
     }
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification(m.fromName + ' ' + kind.inn, { body: 'Open Miss You to send one back.' });
+        new Notification(m.fromName + ' ' + kind.inn, { body: 'Open Aemerg to send one back.' });
       } catch (e) {}
     }
   }
@@ -465,6 +465,84 @@
     openIdx = -1;
   }
 
+  var installPrompt = null;
+  var swReg = null;
+
+  function standalone() {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+           window.matchMedia('(display-mode: minimal-ui)').matches ||
+           window.navigator.standalone === true;
+  }
+
+  function paintPwa() {
+    var installed = standalone();
+    $('pwaInstalled').textContent = installed ? 'Yes, running as an app' : 'Running in a browser tab';
+    $('pwaInstalled').classList.toggle('warm', !installed);
+
+    $('pwaInstall').hidden = installed || !installPrompt;
+
+    if (installed) {
+      $('pwaHow').textContent = 'Aemerg is installed on this device.';
+    } else if (installPrompt) {
+      $('pwaHow').textContent = 'Install it and Aemerg opens in its own window, with its own icon.';
+    } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      $('pwaHow').textContent = 'On iPhone: tap Share, then Add to Home Screen.';
+    } else if (!window.isSecureContext && location.hostname !== 'localhost') {
+      $('pwaHow').textContent = 'Installing needs https. Open Aemerg over a secure address to install it.';
+    } else {
+      $('pwaHow').textContent = 'Your browser offers Install from its own menu, usually in the address bar.';
+    }
+
+    if (!('serviceWorker' in navigator)) {
+      $('pwaOffline').textContent = 'Not supported here';
+    } else if (navigator.serviceWorker.controller) {
+      $('pwaOffline').textContent = 'Ready';
+    } else if (swReg) {
+      $('pwaOffline').textContent = 'Preparing';
+    } else {
+      $('pwaOffline').textContent = 'Off';
+    }
+
+    if (!('Notification' in window)) {
+      $('pwaNotify').textContent = 'Not supported here';
+      $('pwaNotifyAsk').disabled = true;
+    } else {
+      var perm = Notification.permission;
+      $('pwaNotify').textContent = perm === 'granted' ? 'Allowed'
+                                : perm === 'denied'  ? 'Blocked'
+                                : 'Not asked';
+      $('pwaNotifyAsk').hidden = perm !== 'default';
+    }
+  }
+
+  function registerSw() {
+    if (!('serviceWorker' in navigator)) { paintPwa(); return; }
+    if (!window.isSecureContext && location.hostname !== 'localhost') { paintPwa(); return; }
+
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      swReg = reg;
+      paintPwa();
+
+      function watch(w) {
+        if (!w) return;
+        w.addEventListener('statechange', function () {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) {
+            $('pwaUpdate').hidden = false;
+          }
+          paintPwa();
+        });
+      }
+      watch(reg.installing);
+      reg.addEventListener('updatefound', function () { watch(reg.installing); });
+    }).catch(function () { paintPwa(); });
+
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (reloading) location.reload();
+    });
+  }
+
+  var reloading = false;
+
   function paintSettings() {
     if (state.user) {
       $('setName').value = state.user.name;
@@ -487,6 +565,7 @@
   function openSettings() {
     paintSettings();
     refreshGeoState();
+    paintPwa();
     $('settings').classList.add('on');
     $('settings').setAttribute('aria-hidden', 'false');
   }
@@ -580,6 +659,42 @@
   $('closeSettings').onclick = closeSettings;
   $('geoAsk').onclick = askLocation;
 
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    installPrompt = e;
+    paintPwa();
+  });
+
+  window.addEventListener('appinstalled', function () {
+    installPrompt = null;
+    paintPwa();
+    toast('Aemerg installed');
+  });
+
+  $('pwaInstall').onclick = function () {
+    if (!installPrompt) { toast('Use your browser menu to install'); return; }
+    installPrompt.prompt();
+    installPrompt.userChoice.then(function (choice) {
+      if (choice.outcome !== 'accepted') toast('Install cancelled');
+      installPrompt = null;
+      paintPwa();
+    }).catch(function () { installPrompt = null; paintPwa(); });
+  };
+
+  $('pwaNotifyAsk').onclick = function () {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(function (perm) {
+      paintPwa();
+      toast(perm === 'granted' ? 'Notifications allowed' : 'Notifications not allowed');
+    }).catch(function () {});
+  };
+
+  $('pwaUpdate').onclick = function () {
+    if (!swReg || !swReg.waiting) { location.reload(); return; }
+    reloading = true;
+    swReg.waiting.postMessage({ t: 'skip-waiting' });
+  };
+
   $('saveName').onclick = function () {
     var name = $('setName').value.trim();
     if (!name) { toast('A name cannot be empty'); return; }
@@ -647,14 +762,13 @@
   paint();
   if (state.token) {
     refresh().then(connect);
-    if ('Notification' in window && Notification.permission === 'default') {
-
-      setTimeout(function () { Notification.requestPermission().catch(function () {}); }, 4000);
-    }
+    /* asking for notifications is a button in Settings, not a surprise on load */
   } else {
     linkChip('Not signed in', false);
     setTimeout(function () { $('regName').focus(); }, 300);
   }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitName);
+  registerSw();
+  paintPwa();
 
 })();

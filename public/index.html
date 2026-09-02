@@ -3,7 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Miss You</title>
+<title>Aemerg</title>
+<meta name="description" content="Tell one friend you are thinking of them. Nothing arrives late, nothing gets lost.">
+<meta name="theme-color" content="#17100C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aemerg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-64.png" sizes="64x64" type="image/png">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Jost:wght@300;400;500&display=swap">
@@ -20,7 +30,7 @@
 </div>
 
 <header id="top">
-  <div id="mark">Miss You</div>
+  <div id="mark">Aemerg</div>
   <div id="topRight">
     <span id="link"><span class="dot"></span><span id="linkText">Connecting</span></span>
     <button class="btn" id="openSettings" type="button" hidden>Settings</button>
@@ -121,6 +131,17 @@
         <button class="btn" id="addPhotos" type="button" style="flex:1">Add photos</button>
         <button class="btn ghost" id="clearPhotos" type="button" style="flex:1">Clear</button>
       </div>
+    </div>
+
+    <div class="group">
+      <h3>App</h3>
+      <dl class="pair"><dt>Installed</dt><dd id="pwaInstalled" class="warm">Running in a browser tab</dd></dl>
+      <button class="btn solid" id="pwaInstall" type="button" hidden>Install Aemerg</button>
+      <p class="sub" id="pwaHow" style="text-align:left">Install it and Aemerg opens in its own window, with its own icon.</p>
+      <dl class="pair"><dt>Works offline</dt><dd id="pwaOffline">Checking</dd></dl>
+      <dl class="pair"><dt>Notifications</dt><dd id="pwaNotify">Not asked</dd></dl>
+      <button class="btn" id="pwaNotifyAsk" type="button">Allow notifications</button>
+      <button class="btn solid" id="pwaUpdate" type="button" hidden>Update ready - restart</button>
     </div>
 
     <div class="group">

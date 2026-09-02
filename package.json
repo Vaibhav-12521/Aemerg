@@ -1,8 +1,8 @@
 {
-  "name": "missyou",
+  "name": "aemerg",
   "version": "1.0.0",
   "private": true,
-  "description": "Internet-only friendship app: two friends connect with a 6-digit code and send Miss You over WebSockets.",
+  "description": "Aemerg: an internet-only friendship app. Two friends connect with a 6-digit code and send each other notes over WebSockets.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
