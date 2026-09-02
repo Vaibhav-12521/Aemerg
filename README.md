@@ -139,8 +139,27 @@ vercel --prod
 {"ok":true,"store":"hosted","push":true}
 ```
 
-`"store":"hosted"` is the line that matters. If it says `"local"` the Upstash
-variables did not arrive, and accounts will vanish between requests.
+`"store":"hosted"` is the line that matters.
+
+If it says `"missing"`, the Upstash variables did not arrive. On a serverless
+host that is fatal rather than merely untidy: each request gets its own
+short-lived container, so a store that is only a file forgets everything
+between requests and people are signed out at random. The app refuses to run
+that way rather than handing out accounts that disappear, and says so on
+screen and at `/healthz`.
+
+#### If you see "Still signed in here"
+
+The screen means the server does not recognise your device, and it keeps your
+session rather than dropping you back to sign-up. Check `/api/healthz`:
+
+* `"store":"missing"` - the host has no database configured. Set the two
+  Upstash variables and redeploy. The screen says this outright.
+* `"store":"hosted"` - the store is fine, so the account really did go. That
+  happens if the Upstash database was emptied or swapped. **Start over with a
+  new code** is the way out.
+* It appears once and then clears itself - the server was simply asleep or
+  restarting, which is normal and needs nothing.
 
 #### Why it fits on Vercel now
 

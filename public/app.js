@@ -153,6 +153,7 @@
         if (!r.ok) {
           var err = new Error(data.error || 'Something went wrong. Try again.');
           err.status = r.status;
+          if (data.code) err.code = data.code;
           throw err;
         }
         return data;
@@ -241,9 +242,19 @@
     if (!state.token)      { screen('scr-onboard'); return; }
     if (state.stale) {
       var who = get(K.name, '');
-      $('staleWho').textContent = who
-        ? 'This device is signed in as ' + who + ', but the server does not recognise it right now.'
-        : 'The server does not recognise this device right now.';
+      if (state.staleReason === 'store') {
+        $('staleTitle').textContent = 'The server has no database';
+        $('staleWho').textContent = 'Aemerg is running, but nothing can be saved, so accounts disappear between visits.';
+        $('staleWhy').textContent = 'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN on the host and redeploy. Nothing on this device has been deleted.';
+        $('staleFresh').hidden = true;
+      } else {
+        $('staleTitle').textContent = 'Still signed in here';
+        $('staleWho').textContent = who
+          ? 'This device is signed in as ' + who + ', but the server does not recognise it right now.'
+          : 'The server does not recognise this device right now.';
+        $('staleWhy').textContent = 'Your account is still on this device. This usually means the server restarted or lost its data. Nothing has been deleted here.';
+        $('staleFresh').hidden = false;
+      }
       screen('scr-stale');
       return;
     }
@@ -462,12 +473,14 @@
       state.live = false;
       missed++;
 
-      if (err && err.status === 401) {
-        /* the server does not know this session; keep it and say so */
+      if (err && (err.status === 401 || err.code === 'store-missing')) {
+        /* Either the server has forgotten this session or it has nowhere to
+           remember anything. Keep the session and say which. */
         state.stale = true;
+        state.staleReason = err.code === 'store-missing' ? 'store' : 'session';
         linkChip('Offline', false);
         paint();
-        schedule(30000);
+        schedule(err.code === 'store-missing' ? 20000 : 30000);
         return;
       }
       linkChip(navigator.onLine === false ? 'Offline' : 'Reconnecting', false);
