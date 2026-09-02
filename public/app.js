@@ -403,7 +403,11 @@
   function linkChip(text, up) {
     $('linkText').textContent = text;
     $('link').classList.toggle('up', !!up);
-    $('setLink').textContent = text;
+    var el = $('setLink');
+    if (el) {
+      el.textContent = text;
+      el.className = 'chip' + (up ? ' good' : text === 'Offline' ? ' bad' : ' warn');
+    }
   }
 
   /* ------------------------------------------------------------ polling ---
@@ -608,54 +612,6 @@
     setTimeout(nextPopup, 260);
   }
 
-  var geoWatch = null;
-
-  function geoSupported() {
-    return 'geolocation' in navigator && (window.isSecureContext || location.hostname === 'localhost');
-  }
-
-  function showPosition(pos) {
-    $('geoState').textContent = 'Allowed';
-    $('geoLat').textContent = pos.coords.latitude.toFixed(6) + '°';
-    $('geoLon').textContent = pos.coords.longitude.toFixed(6) + '°';
-    $('geoAcc').textContent = Math.round(pos.coords.accuracy) + ' m';
-    $('geoAt').textContent  = new Date(pos.timestamp).toLocaleTimeString();
-  }
-
-  function geoError(err) {
-    var msg = err.code === 1 ? 'Denied'
-            : err.code === 2 ? 'Unavailable'
-            : 'Timed out';
-    $('geoState').textContent = msg;
-    if (err.code === 1) toast('Location permission was denied in the browser');
-  }
-
-  function askLocation() {
-    if (!geoSupported()) {
-      $('geoState').textContent = 'Unavailable here';
-      toast('Location needs https or localhost');
-      return;
-    }
-    $('geoState').textContent = 'Asking…';
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      showPosition(pos);
-      if (geoWatch === null) {
-        geoWatch = navigator.geolocation.watchPosition(showPosition, geoError, { enableHighAccuracy: false });
-      }
-    }, geoError, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
-  }
-
-  function refreshGeoState() {
-    if (!geoSupported()) { $('geoState').textContent = 'Unavailable here'; $('geoAsk').disabled = true; return; }
-    if (!navigator.permissions || !navigator.permissions.query) return;
-    navigator.permissions.query({ name: 'geolocation' }).then(function (p) {
-      if (p.state === 'granted') { $('geoState').textContent = 'Allowed'; askLocation(); }
-      else if (p.state === 'denied') $('geoState').textContent = 'Denied';
-      else $('geoState').textContent = 'Not asked';
-      p.onchange = function () { refreshGeoState(); };
-    }).catch(function () {});
-  }
-
   var photos = jsonGet(K.photos, []);
   Collage.init({
     onPick: function (i, src) {
@@ -707,8 +663,7 @@
 
   function paintPwa() {
     var installed = standalone();
-    $('pwaInstalled').textContent = installed ? 'Yes, running as an app' : 'Running in a browser tab';
-    $('pwaInstalled').classList.toggle('warm', !installed);
+    chip($('pwaInstalled'), installed ? 'Installed' : 'Browser tab', installed ? 'good' : 'warn');
 
     $('pwaInstall').hidden = installed || !installPrompt;
 
@@ -725,23 +680,23 @@
     }
 
     if (!('serviceWorker' in navigator)) {
-      $('pwaOffline').textContent = 'Not supported here';
+      chip($('pwaOffline'), 'Not supported', 'bad');
     } else if (navigator.serviceWorker.controller) {
-      $('pwaOffline').textContent = 'Ready';
+      chip($('pwaOffline'), 'Ready', 'good');
     } else if (swReg) {
-      $('pwaOffline').textContent = 'Preparing';
+      chip($('pwaOffline'), 'Preparing', 'warn');
     } else {
-      $('pwaOffline').textContent = 'Off';
+      chip($('pwaOffline'), 'Off', '');
     }
 
     if (!('Notification' in window)) {
-      $('pwaNotify').textContent = 'Not supported here';
-      $('pwaNotifyAsk').disabled = true;
+      chip($('pwaNotify'), 'Not supported', 'bad');
+      $('pwaNotifyAsk').hidden = true;
     } else {
       var perm = Notification.permission;
-      $('pwaNotify').textContent = perm === 'granted' ? 'Allowed'
-                                : perm === 'denied'  ? 'Blocked'
-                                : 'Not asked';
+      chip($('pwaNotify'),
+           perm === 'granted' ? 'Allowed' : perm === 'denied' ? 'Blocked' : 'Not asked',
+           perm === 'granted' ? 'good' : perm === 'denied' ? 'bad' : 'warn');
       $('pwaNotifyAsk').hidden = perm !== 'default';
     }
   }
@@ -770,31 +725,31 @@
     if (!st) return;
 
     if (!pushSupported()) {
-      st.textContent = 'Not supported here';
+      chip(st, 'Not supported', 'bad');
       how.textContent = /iphone|ipad|ipod/i.test(navigator.userAgent)
         ? 'On iPhone this needs iOS 16.4 or later, and Aemerg must be added to the Home Screen first.'
         : 'This browser cannot deliver notifications while the app is closed.';
       return;
     }
     if (!pushKey) {
-      st.textContent = 'Off on this server';
+      chip(st, 'Off on server', 'bad');
       how.textContent = 'The server has no push keys. Run node tools/vapid-keys.js and restart it.';
       return;
     }
     if (Notification.permission !== 'granted') {
-      st.textContent = 'Needs permission';
+      chip(st, 'Needs permission', 'warn');
       how.textContent = 'Allow notifications above, and notes will arrive even when Aemerg is closed.';
       return;
     }
     if (pushSub) {
       var n = state.push && state.push.devices ? state.push.devices : 1;
-      st.textContent = 'On for this device';
+      chip(st, 'On', 'good');
       how.textContent = n > 1
         ? 'Notes reach you here even when Aemerg is closed. ' + n + ' devices are set up.'
         : 'Notes reach you here even when Aemerg is closed.';
       return;
     }
-    st.textContent = 'Setting up';
+    chip(st, 'Setting up', 'warn');
     how.textContent = '';
   }
 
@@ -885,28 +840,41 @@
 
   var reloading = false;
 
+  /* Marks a value as good, waiting or wrong so the state is legible at a
+     glance rather than only on reading it. */
+  function chip(el, text, tone) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'chip' + (tone ? ' ' + tone : '');
+  }
+
   function paintSettings() {
     if (state.user) {
       $('setName').value = state.user.name;
-      $('setJoined').textContent = 'this browser';
+      $('setSub').textContent = state.user.name + ' \u00B7 ' + state.user.code;
+      $('setJoined').textContent = 'This browser only';
+    } else {
+      $('setSub').textContent = 'Not signed in';
     }
     paintCodes();
+
     if (state.friend) {
       $('setFriendName').textContent = state.friend.name;
       $('setFriendCode').textContent = state.friend.code;
-      $('setFriendState').textContent = state.friend.online ? 'Online' : 'Offline';
+      chip($('setFriendState'),
+           state.friend.online ? 'Online' : 'Offline',
+           state.friend.online ? 'good' : '');
       $('unfriend').hidden = false;
     } else {
       $('setFriendName').textContent = 'Nobody yet';
-      $('setFriendCode').textContent = '-';
-      $('setFriendState').textContent = '-';
+      $('setFriendCode').textContent = '\u2014';
+      chip($('setFriendState'), '\u2014', '');
       $('unfriend').hidden = true;
     }
   }
 
   function openSettings() {
     paintSettings();
-    refreshGeoState();
     paintPwa();
     paintPush();
     $('settings').classList.add('on');
@@ -1035,8 +1003,6 @@
 
   $('openSettings').onclick = openSettings;
   $('closeSettings').onclick = closeSettings;
-  $('geoAsk').onclick = askLocation;
-
   $('staleRetry').onclick = function () {
     toast('Checking');
     refresh().then(function () {

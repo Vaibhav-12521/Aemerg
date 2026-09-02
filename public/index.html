@@ -107,71 +107,80 @@
 
 <aside id="settings" aria-hidden="true">
   <header>
-    <h2>Settings</h2>
-    <button class="btn ghost" id="closeSettings" type="button">Close</button>
-  </header>
-  <div class="body">
-
-    <div class="group">
-      <h3>You</h3>
-      <input class="field" id="setName" type="text" maxlength="40" placeholder="Your name">
-      <button class="btn" id="saveName" type="button">Save name</button>
-      <dl class="pair"><dt>Joined</dt><dd id="setJoined">-</dd></dl>
-    </div>
-
-    <div class="group">
-      <h3>My connection code</h3>
-      <div class="bigcode" id="setCode">------</div>
-      <button class="btn" id="setCopy" type="button">Copy code</button>
-    </div>
-
-    <div class="group">
-      <h3>Location</h3>
-      <dl class="pair"><dt>Permission</dt><dd id="geoState" class="warm">Not asked</dd></dl>
-      <button class="btn" id="geoAsk" type="button">Allow location</button>
-      <dl class="pair"><dt>Latitude</dt><dd id="geoLat">-</dd></dl>
-      <dl class="pair"><dt>Longitude</dt><dd id="geoLon">-</dd></dl>
-      <dl class="pair"><dt>Accuracy</dt><dd id="geoAcc">-</dd></dl>
-      <dl class="pair"><dt>Read at</dt><dd id="geoAt">-</dd></dl>
-      <p class="sub" style="text-align:left">Your coordinates stay in this browser. They are never sent to the server or to your friend.</p>
-    </div>
-
-    <div class="group">
-      <h3>Connected friend</h3>
-      <dl class="pair"><dt>Name</dt><dd id="setFriendName">Nobody yet</dd></dl>
-      <dl class="pair"><dt>Their code</dt><dd id="setFriendCode">-</dd></dl>
-      <dl class="pair"><dt>Status</dt><dd id="setFriendState">-</dd></dl>
-      <button class="btn ghost" id="unfriend" type="button" hidden>Disconnect</button>
-    </div>
-
-    <div class="group">
-      <h3>Photos</h3>
-      <p class="sub" style="text-align:left">Pictures scattered behind the name. They stay in this browser.</p>
-      <div class="card-row" style="display:flex;gap:10px">
-        <button class="btn" id="addPhotos" type="button" style="flex:1">Add photos</button>
-        <button class="btn ghost" id="clearPhotos" type="button" style="flex:1">Clear</button>
+    <div class="who">
+      <img src="icons/icon-192.png" alt="" width="26" height="26">
+      <div>
+        <h2>Settings</h2>
+        <p id="setSub">Not signed in</p>
       </div>
     </div>
+    <button class="btn ghost" id="closeSettings" type="button">Done</button>
+  </header>
 
-    <div class="group">
+  <div class="body">
+
+    <section class="group">
+      <h3>Your name</h3>
+      <p class="sub">What your friend sees when you send them something.</p>
+      <div class="row">
+        <input class="field" id="setName" type="text" maxlength="40" placeholder="Your name" autocomplete="nickname">
+        <button class="btn" id="saveName" type="button">Save</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h3>Your code</h3>
+      <p class="sub">Give these six digits to the person you want to connect with.</p>
+      <div class="bigcode" id="setCode">------</div>
+      <button class="btn wide" id="setCopy" type="button">Copy code</button>
+    </section>
+
+    <section class="group">
+      <h3>Connected friend</h3>
+      <dl class="pair"><dt>Name</dt><dd id="setFriendName">Nobody yet</dd></dl>
+      <dl class="pair"><dt>Their code</dt><dd id="setFriendCode">&mdash;</dd></dl>
+      <dl class="pair"><dt>Status</dt><dd><span class="chip" id="setFriendState">&mdash;</span></dd></dl>
+      <button class="btn ghost wide" id="unfriend" type="button" hidden>Disconnect</button>
+    </section>
+
+    <section class="group">
+      <h3>Notifications</h3>
+      <dl class="pair"><dt>Permission</dt><dd><span class="chip" id="pwaNotify">Not asked</span></dd></dl>
+      <dl class="pair"><dt>When app is closed</dt><dd><span class="chip" id="pushState">Checking</span></dd></dl>
+      <button class="btn wide" id="pwaNotifyAsk" type="button">Allow notifications</button>
+      <p class="sub" id="pushHow"></p>
+    </section>
+
+    <section class="group">
       <h3>App</h3>
-      <dl class="pair"><dt>Installed</dt><dd id="pwaInstalled" class="warm">Running in a browser tab</dd></dl>
-      <button class="btn solid" id="pwaInstall" type="button" hidden>Install Aemerg</button>
-      <p class="sub" id="pwaHow" style="text-align:left">Install it and Aemerg opens in its own window, with its own icon.</p>
-      <dl class="pair"><dt>Works offline</dt><dd id="pwaOffline">Checking</dd></dl>
-      <dl class="pair"><dt>Notifications</dt><dd id="pwaNotify">Not asked</dd></dl>
-      <button class="btn" id="pwaNotifyAsk" type="button">Allow notifications</button>
-      <dl class="pair"><dt>When app is closed</dt><dd id="pushState">Checking</dd></dl>
-      <p class="sub" id="pushHow" style="text-align:left"></p>
-      <button class="btn solid" id="pwaUpdate" type="button" hidden>Update ready - restart</button>
-    </div>
+      <dl class="pair"><dt>Installed</dt><dd><span class="chip" id="pwaInstalled">Browser tab</span></dd></dl>
+      <dl class="pair"><dt>Works offline</dt><dd><span class="chip" id="pwaOffline">Checking</span></dd></dl>
+      <button class="btn solid wide" id="pwaInstall" type="button" hidden>Install Aemerg</button>
+      <button class="btn solid wide" id="pwaUpdate" type="button" hidden>Update ready &middot; restart</button>
+      <p class="sub" id="pwaHow">Install it and Aemerg opens in its own window, with its own icon.</p>
+    </section>
 
-    <div class="group">
+    <section class="group">
+      <h3>Photos</h3>
+      <p class="sub">Pictures scattered behind the name. They stay on this device.</p>
+      <div class="row">
+        <button class="btn" id="addPhotos" type="button">Add photos</button>
+        <button class="btn ghost" id="clearPhotos" type="button">Clear</button>
+      </div>
+    </section>
+
+    <section class="group">
       <h3>Connection</h3>
-      <dl class="pair"><dt>Server</dt><dd id="setLink">-</dd></dl>
+      <dl class="pair"><dt>Server</dt><dd><span class="chip" id="setLink">&mdash;</span></dd></dl>
       <dl class="pair"><dt>Waiting to deliver</dt><dd id="setQueued">0</dd></dl>
-      <button class="btn ghost" id="signOut" type="button">Sign out of this browser</button>
-    </div>
+      <dl class="pair"><dt>Session</dt><dd id="setJoined">&mdash;</dd></dl>
+    </section>
+
+    <section class="group danger">
+      <h3>Sign out</h3>
+      <p class="sub">Your notes stay on the server. Signing out only clears this device, and you would need a new code to come back.</p>
+      <button class="btn ghost wide" id="signOut" type="button">Sign out of this browser</button>
+    </section>
 
   </div>
 </aside>
