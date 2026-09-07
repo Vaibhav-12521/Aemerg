@@ -8,3 +8,8 @@ Thumbs.db
 .DS_Store
 vapid.json
 media/
+
+# personal images dropped in the project folder
+last_message.jpeg
+*.jpeg
+*.jpg
