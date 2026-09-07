@@ -1164,7 +1164,6 @@
   };
 
   $('boxClose').onclick = closeBox;
-  $('boxX').onclick = closeBox;
   $('boxDel').onclick = function () {
     if (openIdx < 0) return;
     photos.splice(openIdx, 1);
@@ -1172,13 +1171,7 @@
     savePhotos();
     closeBox();
   };
-  /* anywhere that is not the picture or a button closes it, so there is no
-     way to be left looking at a photo with nothing to press */
-  $('box').onclick = function (e) {
-    if (e.target === $('boxImg')) return;
-    if (e.target.closest && e.target.closest('button')) return;
-    closeBox();
-  };
+  $('box').onclick = function (e) { if (e.target === $('box')) closeBox(); };
 
   var dragDepth = 0;
   window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; });
@@ -1218,6 +1211,80 @@
       navigator.sendBeacon('/api/offline?token=' + encodeURIComponent(state.token), '{}');
     } catch (e) {}
   });
+  /* ------------------------------------------------------------ the gate ---
+
+     The message is up from the first paint. Covering the app is not enough on
+     its own: a keyboard can still reach what is underneath, and the browser
+     will happily scroll it. So everything else is marked inert while the gate
+     stands, and only the button inside it takes the gate down. */
+
+  var gateEl = $('gate');
+
+  function gateBlock(e) {
+    if (gateEl.classList.contains('gone')) return;
+    if (gateEl.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function gateKeys(e) {
+    if (gateEl.classList.contains('gone')) return;
+    /* Escape must not be a way past a message someone meant to be read */
+    if (e.key === 'Escape') { e.preventDefault(); return; }
+    if (e.key === 'Tab') {
+      /* keep focus on the one thing there is to do */
+      e.preventDefault();
+      $('gateGo').focus();
+    }
+  }
+
+  function raiseGate() {
+    if (!gateEl) return;
+
+    /* hide the app from assistive technology and from tabbing */
+    ['stage', 'top', 'requests', 'settings', 'popup', 'box'].forEach(function (id) {
+      var el = $(id);
+      if (el) { el.setAttribute('aria-hidden', 'true'); el.inert = true; }
+    });
+    var m = document.querySelector('main');
+    if (m) { m.setAttribute('aria-hidden', 'true'); m.inert = true; }
+
+    document.addEventListener('keydown', gateKeys, true);
+    ['pointerdown', 'mousedown', 'touchstart', 'click', 'wheel', 'contextmenu']
+      .forEach(function (t) { document.addEventListener(t, gateBlock, true); });
+
+    setTimeout(function () { $('gateGo').focus(); }, 400);
+  }
+
+  function dropGate() {
+    gateEl.classList.add('gone');
+
+    ['stage', 'top', 'requests', 'settings', 'popup', 'box'].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      el.inert = false;
+      /* settings and the dialogs manage their own aria-hidden */
+      if (id === 'settings' || id === 'popup' || id === 'box') return;
+      el.removeAttribute('aria-hidden');
+    });
+    var m = document.querySelector('main');
+    if (m) { m.inert = false; m.removeAttribute('aria-hidden'); }
+
+    document.removeEventListener('keydown', gateKeys, true);
+    ['pointerdown', 'mousedown', 'touchstart', 'click', 'wheel', 'contextmenu']
+      .forEach(function (t) { document.removeEventListener(t, gateBlock, true); });
+
+    fitName();
+  }
+
+  if (gateEl) {
+    raiseGate();
+    $('gateGo').addEventListener('click', function (e) {
+      e.stopPropagation();
+      dropGate();
+    });
+  }
+
   window.addEventListener('resize', fitName);
 
   state.token = get(K.token, null);

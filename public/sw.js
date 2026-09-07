@@ -19,7 +19,8 @@ var SHELL = [
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
-  '/icons/favicon-64.png'
+  '/icons/favicon-64.png',
+  '/last-message.jpeg'
 ];
 
 self.addEventListener('install', function (e) {

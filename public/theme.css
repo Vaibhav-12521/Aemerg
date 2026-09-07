@@ -683,59 +683,13 @@ main::-webkit-scrollbar{width:0;height:0}
   position:fixed;left:0;right:0;top:0;z-index:110;
   height:100vh;
   height:100dvh;
-  display:none;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain;
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:22px;
+  padding:clamp(20px,5vw,60px);
   background:rgba(12,8,5,.94);
 }
-#box.on{display:block}
-
-/* The inner block is what centres, so the box itself is free to scroll if
-   the picture and the buttons together ever exceed the screen. */
-.boxInner{
-  min-height:100%;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:22px;
-  padding:calc(clamp(20px,5vw,60px) + var(--sa-t)) clamp(16px,5vw,60px) calc(clamp(20px,5vw,60px) + var(--sa-b));
-}
-
-/* Capped in the same unit the box is sized in. Mixing vh and dvh is what let
-   the buttons fall off the bottom once the address bar appeared. */
-#box img{
-  max-width:100%;
-  max-height:62dvh;
-  object-fit:contain;
-  box-shadow:0 30px 90px rgba(0,0,0,.7);
-  border-radius:6px;
-}
-@supports not (height:1dvh){
-  #box img{max-height:56vh}
-}
-#box .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
-
-/* Always in the corner, never in the flow, so nothing can push it away. */
-#boxX{
-  position:fixed;
-  top:calc(12px + var(--sa-t));
-  right:calc(12px + var(--sa-r));
-  z-index:2;
-  width:44px;height:44px;
-  display:grid;place-items:center;
-  font-size:26px;line-height:1;
-  font-family:var(--util);
-  color:var(--ivory);
-  background:rgba(28,20,15,.82);
-  -webkit-backdrop-filter:var(--glass-blur-lite);
-  backdrop-filter:var(--glass-blur-lite);
-  border:1px solid var(--glass-rim-soft);
-  border-radius:50%;
-  cursor:pointer;
-  box-shadow:0 6px 20px rgba(0,0,0,.5);
-}
-#boxX:hover{background:rgba(201,123,110,.28);border-color:rgba(201,123,110,.5)}
-#boxX:active{transform:scale(.94)}
-#boxX:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+#box.on{display:flex}
+#box img{max-width:100%;max-height:72vh;object-fit:contain;box-shadow:0 30px 90px rgba(0,0,0,.7)}
+#box .row{display:flex;gap:12px}
 
 /* ---------- phones and small tablets ---------- */
 
@@ -816,9 +770,8 @@ main::-webkit-scrollbar{width:0;height:0}
     letter-spacing:.12em;
   }
 
-  .boxInner{padding:calc(64px + var(--sa-t)) 16px calc(18px + var(--sa-b))}
-  #box img{max-height:58dvh}
-  #box .row .btn{flex:1;min-width:130px;text-align:center}
+  #box{padding:calc(18px + var(--sa-t)) 16px calc(18px + var(--sa-b))}
+  #box img{max-height:60vh}
 
   #requests{
     top:calc(var(--topbar) + var(--sa-t) + 8px);
@@ -863,4 +816,70 @@ main::-webkit-scrollbar{width:0;height:0}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+
+/* ------------------------------------------------------------ the gate ---
+
+   Sits above everything, including the settings panel and the note popup, and
+   is visible from the first paint rather than after script runs, so the app
+   underneath is never reachable even for a frame. */
+
+#gate{
+  position:fixed;left:0;right:0;top:0;
+  height:100vh;
+  height:100dvh;
+  z-index:400;
+  display:grid;place-items:center;
+  padding:calc(20px + var(--sa-t)) calc(18px + var(--sa-r)) calc(20px + var(--sa-b)) calc(18px + var(--sa-l));
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(46,33,26,.55) 0%, rgba(12,8,5,.92) 70%),
+    rgba(9,6,4,.96);
+  -webkit-backdrop-filter:saturate(140%) blur(30px);
+  backdrop-filter:saturate(140%) blur(30px);
+  overflow-y:auto;
+}
+#gate.gone{display:none}
+
+#gate .inner{
+  display:flex;flex-direction:column;align-items:center;
+  gap:clamp(16px,3.5vh,26px);
+  width:100%;
+  max-width:min(430px,92vw);
+  margin:auto;
+  animation:gateIn .7s cubic-bezier(.2,.8,.3,1) both;
+}
+
+#gate img{
+  display:block;
+  width:100%;
+  height:auto;
+  max-height:calc(100dvh - 190px);
+  object-fit:contain;
+  border-radius:var(--r-md);
+  border:1px solid var(--glass-rim-soft);
+  box-shadow:0 30px 90px rgba(0,0,0,.6), var(--glass-sheen);
+}
+
+#gate .btn{
+  min-width:190px;
+  padding:15px 30px;
+  font-size:11.5px;
+  letter-spacing:.28em;
+}
+
+@keyframes gateIn{
+  from{opacity:0;transform:translateY(14px) scale(.985)}
+  to{opacity:1;transform:none}
+}
+
+.sr-only{
+  position:absolute;width:1px;height:1px;
+  padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0;
+}
+
+@media (max-height:620px){
+  #gate .inner{gap:14px}
+  #gate img{max-height:calc(100dvh - 150px)}
+  #gate .btn{padding:12px 26px}
 }

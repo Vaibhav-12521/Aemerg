@@ -203,13 +203,20 @@
 </div>
 
 <div id="box" role="dialog" aria-modal="true" aria-label="Photo">
-  <button id="boxX" type="button" aria-label="Close">&times;</button>
-  <div class="boxInner">
-    <img id="boxImg" alt="">
-    <div class="row">
-      <button class="btn" id="boxClose" type="button">Close</button>
-      <button class="btn ghost" id="boxDel" type="button">Remove photo</button>
-    </div>
+  <img id="boxImg" alt="">
+  <div class="row">
+    <button class="btn" id="boxClose" type="button">Close</button>
+    <button class="btn ghost" id="boxDel" type="button">Remove photo</button>
+  </div>
+</div>
+
+<!-- Shown over everything the moment the page paints, before the app is
+     reachable, and dismissed only by the button inside it. -->
+<div id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="inner">
+    <h2 id="gateTitle" class="sr-only">A message</h2>
+    <img src="last-message.jpeg" alt="A handwritten note that reads: My last message. I am not moving on. I am not letting you go. I stopped texting, not because I stopped caring, but because I got tired of hurting. If you text me, I will reply. I still check my phone sometimes, hoping it is you. I do not say good morning anymore, but you are still my last thought before sleep. I miss you quietly, every single night.">
+    <button class="btn solid" id="gateGo" type="button">Continue</button>
   </div>
 </div>
 
