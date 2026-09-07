@@ -853,7 +853,7 @@ main::-webkit-scrollbar{width:0;height:0}
   display:block;
   width:100%;
   height:auto;
-  max-height:calc(100dvh - 190px);
+  max-height:calc(100dvh - 80px);
   object-fit:contain;
   border-radius:var(--r-md);
   border:1px solid var(--glass-rim-soft);
@@ -880,6 +880,5 @@ main::-webkit-scrollbar{width:0;height:0}
 
 @media (max-height:620px){
   #gate .inner{gap:14px}
-  #gate img{max-height:calc(100dvh - 150px)}
-  #gate .btn{padding:12px 26px}
+  #gate img{max-height:calc(100dvh - 50px)}
 }

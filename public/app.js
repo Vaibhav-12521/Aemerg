@@ -1218,6 +1218,13 @@
      will happily scroll it. So everything else is marked inert while the gate
      stands, and only the button inside it takes the gate down. */
 
+  /* The app is closed. While this is true the message is all there is: there
+     is no button through it, and nothing behind it starts up, so it does not
+     poll, hold a presence claim, or reach the server at all.
+
+     To open the app again, set this to false. That is the whole switch. */
+  var CLOSED = true;
+
   var gateEl = $('gate');
 
   function gateBlock(e) {
@@ -1229,13 +1236,8 @@
 
   function gateKeys(e) {
     if (gateEl.classList.contains('gone')) return;
-    /* Escape must not be a way past a message someone meant to be read */
-    if (e.key === 'Escape') { e.preventDefault(); return; }
-    if (e.key === 'Tab') {
-      /* keep focus on the one thing there is to do */
-      e.preventDefault();
-      $('gateGo').focus();
-    }
+    /* there is nothing to reach, so no key does anything */
+    if (e.key === 'Escape' || e.key === 'Tab') e.preventDefault();
   }
 
   function raiseGate() {
@@ -1252,40 +1254,19 @@
     document.addEventListener('keydown', gateKeys, true);
     ['pointerdown', 'mousedown', 'touchstart', 'click', 'wheel', 'contextmenu']
       .forEach(function (t) { document.addEventListener(t, gateBlock, true); });
-
-    setTimeout(function () { $('gateGo').focus(); }, 400);
   }
 
-  function dropGate() {
-    gateEl.classList.add('gone');
-
-    ['stage', 'top', 'requests', 'settings', 'popup', 'box'].forEach(function (id) {
-      var el = $(id);
-      if (!el) return;
-      el.inert = false;
-      /* settings and the dialogs manage their own aria-hidden */
-      if (id === 'settings' || id === 'popup' || id === 'box') return;
-      el.removeAttribute('aria-hidden');
-    });
-    var m = document.querySelector('main');
-    if (m) { m.inert = false; m.removeAttribute('aria-hidden'); }
-
-    document.removeEventListener('keydown', gateKeys, true);
-    ['pointerdown', 'mousedown', 'touchstart', 'click', 'wheel', 'contextmenu']
-      .forEach(function (t) { document.removeEventListener(t, gateBlock, true); });
-
-    fitName();
-  }
 
   if (gateEl) {
-    raiseGate();
-    $('gateGo').addEventListener('click', function (e) {
-      e.stopPropagation();
-      dropGate();
-    });
+    if (CLOSED) raiseGate();
+    else gateEl.classList.add('gone');
   }
 
   window.addEventListener('resize', fitName);
+
+  /* Stop here while the app is closed: no polling, no presence, no requests.
+     Everything below is what makes it an app rather than a page. */
+  if (CLOSED) return;
 
   state.token = get(K.token, null);
   updateDate();
