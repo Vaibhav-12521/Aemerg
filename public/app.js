@@ -1164,6 +1164,7 @@
   };
 
   $('boxClose').onclick = closeBox;
+  $('boxX').onclick = closeBox;
   $('boxDel').onclick = function () {
     if (openIdx < 0) return;
     photos.splice(openIdx, 1);
@@ -1171,7 +1172,13 @@
     savePhotos();
     closeBox();
   };
-  $('box').onclick = function (e) { if (e.target === $('box')) closeBox(); };
+  /* anywhere that is not the picture or a button closes it, so there is no
+     way to be left looking at a photo with nothing to press */
+  $('box').onclick = function (e) {
+    if (e.target === $('boxImg')) return;
+    if (e.target.closest && e.target.closest('button')) return;
+    closeBox();
+  };
 
   var dragDepth = 0;
   window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; });

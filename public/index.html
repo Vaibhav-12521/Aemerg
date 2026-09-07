@@ -203,10 +203,13 @@
 </div>
 
 <div id="box" role="dialog" aria-modal="true" aria-label="Photo">
-  <img id="boxImg" alt="">
-  <div class="row">
-    <button class="btn" id="boxClose" type="button">Close</button>
-    <button class="btn ghost" id="boxDel" type="button">Remove photo</button>
+  <button id="boxX" type="button" aria-label="Close">&times;</button>
+  <div class="boxInner">
+    <img id="boxImg" alt="">
+    <div class="row">
+      <button class="btn" id="boxClose" type="button">Close</button>
+      <button class="btn ghost" id="boxDel" type="button">Remove photo</button>
+    </div>
   </div>
 </div>
 
