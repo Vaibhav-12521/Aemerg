@@ -13,3 +13,6 @@ media/
 last_message.jpeg
 *.jpeg
 *.jpg
+
+# the app serves this one, so it is not a stray photo
+!public/last-message.jpeg
